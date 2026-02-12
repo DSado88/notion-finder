@@ -9,6 +9,7 @@ import { useMove } from '@/hooks/use-move';
 import { useCreate } from '@/hooks/use-create';
 import { useRename } from '@/hooks/use-rename';
 import { useDelete } from '@/hooks/use-delete';
+import { prefetchPreview } from '@/hooks/use-preview';
 import { MillerItem } from './miller-item';
 import { ContextMenu } from './context-menu';
 import type { FinderItem, SortField, SortDirection } from '@/types/finder';
@@ -273,6 +274,13 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
     },
     [startEditing],
   );
+
+  // Prefetch preview on hover (debounced to avoid spamming)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const handleMouseEnter = useCallback((item: FinderItem) => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => prefetchPreview(item), 150);
+  }, []);
 
   const handleRenameConfirm = useCallback(
     async (itemId: string, newTitle: string) => {
@@ -558,6 +566,7 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
                     onContextMenu={handleContextMenu}
                     onRenameConfirm={handleRenameConfirm}
                     onRenameCancel={stopEditing}
+                    onMouseEnter={handleMouseEnter}
                   />
                 </div>
               );

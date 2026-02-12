@@ -240,12 +240,35 @@ export function PreviewPanel() {
   return (
     <div className="flex h-full min-w-[300px] flex-1 flex-col overflow-hidden" style={{ borderLeft: '1px solid var(--border)' }}>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {isLoading && (
-          <div className="flex flex-col gap-3">
-            <div className="h-6 w-3/4 animate-pulse rounded bg-gray-100 dark:bg-white/5" />
-            <div className="h-3 w-1/3 animate-pulse rounded bg-gray-100 dark:bg-white/5" />
+        {isLoading && !data && (
+          <div className="flex flex-col">
+            {/* Show metadata instantly from store while content loads */}
+            {item && (
+              <>
+                <div className="mb-1 flex items-start justify-between gap-2">
+                  <h2 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
+                    {item.icon && typeof item.icon === 'object' && 'emoji' in item.icon && (
+                      <span className="mr-2">{item.icon.emoji}</span>
+                    )}
+                    {item.title || 'Untitled'}
+                  </h2>
+                  <div className="mt-1.5 flex flex-none items-center gap-2">
+                    {item.url && (
+                      <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-[11px] opacity-40 hover:opacity-70">
+                        Open in Notion &#x2197;
+                      </a>
+                    )}
+                  </div>
+                </div>
+                {item.lastEditedTime && (
+                  <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }}>
+                    Last edited {new Date(item.lastEditedTime).toLocaleDateString()}
+                  </p>
+                )}
+              </>
+            )}
             <div className="mt-2 space-y-2">
-              {Array.from({ length: 8 }, (_, i) => (
+              {Array.from({ length: 6 }, (_, i) => (
                 <div
                   key={i}
                   className="h-4 animate-pulse rounded bg-gray-100 dark:bg-white/5"

@@ -98,7 +98,7 @@ export class NotionService {
   // TTLs in milliseconds
   private readonly ROOT_TTL = 30 * 60 * 1000; // 30 min
   private readonly CHILDREN_TTL = 60 * 1000; // 60s
-  private readonly CONTENT_TTL = 60 * 1000; // 60s
+  private readonly CONTENT_TTL = 5 * 60 * 1000; // 5 min
 
   // ─── Cache helpers ───
 
@@ -187,6 +187,12 @@ export class NotionService {
           index.set(parentKey, existing);
         }
 
+        // Derive hasChildren from the index: if an item appears as a parent key, it has children
+        for (const item of items) {
+          const children = index.get(item.id);
+          item.hasChildren = !!children && children.length > 0;
+        }
+
         this.workspaceIndex = index;
         this.allItems = items;
         this.workspaceIndexBuiltAt = Date.now();
@@ -228,6 +234,12 @@ export class NotionService {
         index.set(parentKey, existing);
       }
 
+      // Derive hasChildren from the index
+      for (const item of data.items) {
+        const children = index.get(item.id);
+        item.hasChildren = !!children && children.length > 0;
+      }
+
       this.workspaceIndex = index;
       this.allItems = data.items;
       this.workspaceIndexBuiltAt = data.builtAt;
@@ -236,13 +248,112 @@ export class NotionService {
     }
   }
 
+  // ─── In-place index patches (avoid full rebuild) ───
+
+  private patchIndexMove(pageId: string, oldParentId: string | null, newParentId: string): void {
+    if (!this.workspaceIndex) return;
+    const oldKey = oldParentId ?? 'workspace';
+    const newKey = newParentId === 'workspace' ? 'workspace' : newParentId;
+
+    // Find item in allItems
+    const itemIdx = this.allItems.findIndex((i) => i.id === pageId);
+    if (itemIdx === -1) return;
+
+    // Update parentId
+    const updatedItem = {
+      ...this.allItems[itemIdx],
+      parentId: newParentId === 'workspace' ? null : newParentId,
+    };
+    this.allItems[itemIdx] = updatedItem;
+
+    // Remove from old parent
+    const oldChildren = this.workspaceIndex.get(oldKey);
+    if (oldChildren) {
+      const filtered = oldChildren.filter((c) => c.id !== pageId);
+      this.workspaceIndex.set(oldKey, filtered);
+      // Update old parent's hasChildren
+      if (oldKey !== 'workspace' && filtered.length === 0) {
+        const oldParent = this.allItems.find((i) => i.id === oldKey);
+        if (oldParent) oldParent.hasChildren = false;
+      }
+    }
+
+    // Add to new parent
+    const newChildren = this.workspaceIndex.get(newKey) ?? [];
+    newChildren.push(updatedItem);
+    this.workspaceIndex.set(newKey, newChildren);
+    // Update new parent's hasChildren
+    if (newKey !== 'workspace') {
+      const newParent = this.allItems.find((i) => i.id === newKey);
+      if (newParent) newParent.hasChildren = true;
+    }
+
+    this.saveIndexToDisk().catch(() => {});
+  }
+
+  private patchIndexAdd(item: FinderItem): void {
+    if (!this.workspaceIndex) return;
+    const parentKey = item.parentId ?? 'workspace';
+    const children = this.workspaceIndex.get(parentKey) ?? [];
+    children.push(item);
+    this.workspaceIndex.set(parentKey, children);
+    this.allItems.push(item);
+    // Update parent's hasChildren
+    if (parentKey !== 'workspace') {
+      const parent = this.allItems.find((i) => i.id === parentKey);
+      if (parent) parent.hasChildren = true;
+    }
+    this.saveIndexToDisk().catch(() => {});
+  }
+
+  private patchIndexRename(pageId: string, newTitle: string): void {
+    if (!this.workspaceIndex) return;
+    for (const item of this.allItems) {
+      if (item.id === pageId) {
+        item.title = newTitle;
+        break;
+      }
+    }
+    // Also update in parent's children list (may be separate object)
+    for (const [, children] of this.workspaceIndex) {
+      for (const child of children) {
+        if (child.id === pageId) {
+          child.title = newTitle;
+          break;
+        }
+      }
+    }
+    this.saveIndexToDisk().catch(() => {});
+  }
+
+  private patchIndexRemove(pageId: string): void {
+    if (!this.workspaceIndex) return;
+    // Remove from parent's children and update parent's hasChildren
+    for (const [key, children] of this.workspaceIndex) {
+      const idx = children.findIndex((c) => c.id === pageId);
+      if (idx !== -1) {
+        children.splice(idx, 1);
+        if (key !== 'workspace' && children.length === 0) {
+          const parent = this.allItems.find((i) => i.id === key);
+          if (parent) parent.hasChildren = false;
+        }
+        break;
+      }
+    }
+    // Remove from allItems
+    this.allItems = this.allItems.filter((i) => i.id !== pageId);
+    // Remove its children entry
+    this.workspaceIndex.delete(pageId);
+    this.saveIndexToDisk().catch(() => {});
+  }
+
   // ─── Public API ───
 
   /**
    * Get root-level workspace items (served from workspace index).
    */
   async getRootItems(): Promise<FinderItem[]> {
-    await this.ensureWorkspaceIndex();
+    await this.ensureWorkspaceIndex('high', /* allowStale */ true);
     return this.workspaceIndex?.get('workspace') ?? [];
   }
 
@@ -251,8 +362,8 @@ export class NotionService {
    * falls back to direct API call for block-level children.
    */
   async getChildren(parentId: string, priority: Priority = 'high'): Promise<FinderItem[]> {
-    // Try workspace index first
-    await this.ensureWorkspaceIndex(priority);
+    // Try workspace index first (allow stale to avoid blocking on rebuild)
+    await this.ensureWorkspaceIndex(priority, /* allowStale */ true);
     const fromIndex = this.workspaceIndex?.get(parentId);
     if (fromIndex && fromIndex.length > 0) {
       return fromIndex;
@@ -409,8 +520,8 @@ export class NotionService {
     if (oldParentId) {
       this.cache.delete(`children:${oldParentId}`);
     }
-    // Force workspace index rebuild on next access
-    this.workspaceIndexBuiltAt = 0;
+    // Patch workspace index in-place (avoids 45s full rebuild)
+    this.patchIndexMove(pageId, oldParentId, newParentId);
   }
 
   /**
@@ -761,7 +872,7 @@ export class NotionService {
     const item = toFinderItem(page);
 
     this.cache.delete(`children:${parentId}`);
-    this.workspaceIndexBuiltAt = 0;
+    this.patchIndexAdd(item);
 
     return item;
   }
@@ -821,6 +932,7 @@ export class NotionService {
 
     // Construct FinderItem directly — the public API can't see the page
     // until the integration is granted access, which doesn't happen automatically.
+    const now = new Date().toISOString();
     const item: FinderItem = {
       id: newId,
       title,
@@ -828,11 +940,14 @@ export class NotionService {
       parentId: 'workspace',
       hasChildren: false,
       icon: null,
-      lastEditedTime: new Date().toISOString(),
+      createdTime: now,
+      lastEditedTime: now,
+      parentType: 'workspace',
+      url: `https://www.notion.so/${newId.replace(/-/g, '')}`,
     };
 
     this.cache.delete('children:workspace');
-    this.workspaceIndexBuiltAt = 0;
+    this.patchIndexAdd(item);
 
     return item;
   }
@@ -856,7 +971,7 @@ export class NotionService {
     });
 
     this.cache.delete(`page:${pageId}`);
-    this.workspaceIndexBuiltAt = 0;
+    this.patchIndexRename(pageId, newTitle);
   }
 
   /**
@@ -873,7 +988,7 @@ export class NotionService {
     });
 
     this.cache.delete(`page:${pageId}`);
-    this.workspaceIndexBuiltAt = 0;
+    this.patchIndexRemove(pageId);
   }
 
   /**

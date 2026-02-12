@@ -26,6 +26,51 @@ export type PreviewData = PagePreview | DatabasePreview;
 
 // Simple cache outside Zustand — large markdown strings shouldn't trigger store notifications
 const previewCache = new Map<string, PreviewData>();
+const prefetchingIds = new Set<string>();
+
+/** Fire-and-forget prefetch. Call on hover to warm the cache before click. */
+export function prefetchPreview(item: FinderItem | null) {
+  if (!item) return;
+  if (previewCache.has(item.id)) return;
+  if (prefetchingIds.has(item.id)) return;
+  prefetchingIds.add(item.id);
+
+  const endpoint = item.type === 'database'
+    ? `/api/notion/database/${item.id}`
+    : `/api/notion/page/${item.id}`;
+
+  fetch(endpoint)
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then((json) => {
+      let preview: PreviewData;
+      if (item.type === 'database') {
+        preview = {
+          type: 'database',
+          title: json.database.title,
+          url: json.database.url,
+          lastEditedTime: json.database.lastEditedTime,
+          schema: json.schema,
+          recentEntries: json.recentEntries,
+        };
+      } else {
+        preview = {
+          type: 'page',
+          title: json.page.title,
+          icon: json.page.icon?.emoji ?? null,
+          markdown: json.markdown,
+          properties: json.properties ?? [],
+          url: json.page.url,
+          lastEditedTime: json.page.lastEditedTime,
+        };
+      }
+      previewCache.set(item.id, preview);
+    })
+    .catch(() => {})
+    .finally(() => prefetchingIds.delete(item.id));
+}
 
 export function usePreview(item: FinderItem | null) {
   const [data, setData] = useState<PreviewData | null>(null);

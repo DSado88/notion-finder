@@ -15,6 +15,7 @@ interface MillerItemProps {
   onContextMenu: (e: React.MouseEvent, item: FinderItem) => void;
   onRenameConfirm: (itemId: string, newTitle: string) => void;
   onRenameCancel: () => void;
+  onMouseEnter?: (item: FinderItem) => void;
 }
 
 function renderIcon(icon: NotionIcon | null, type: FinderItem['type']) {
@@ -38,6 +39,7 @@ export const MillerItem = memo(
     onContextMenu,
     onRenameConfirm,
     onRenameCancel,
+    onMouseEnter,
   }: MillerItemProps) {
     const isDragging = useDragStore((s) => s.draggedItem?.id === item.id);
     const isDropTarget = useDragStore((s) => s.dropTargetId === item.id);
@@ -146,6 +148,7 @@ export const MillerItem = memo(
         onClick={(e) => onClick(item, e)}
         onDoubleClick={() => onDoubleClick(item)}
         onContextMenu={(e) => onContextMenu(e, item)}
+        onMouseEnter={onMouseEnter ? () => onMouseEnter(item) : undefined}
         onDragStart={canDrag ? handleDragStart : undefined}
         onDragEnd={endDrag}
         onDragOver={handleDragOver}
