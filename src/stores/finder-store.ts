@@ -26,6 +26,8 @@ interface FinderStore {
   selectItem: (columnIndex: number, itemId: string) => void;
   setChildren: (parentId: string, items: FinderItem[]) => void;
   invalidateCache: (parentIds: string[]) => void;
+  /** Optimistically move an item between parents in the client cache */
+  optimisticMove: (itemId: string, oldParentId: string, newParentId: string) => void;
   setViewMode: (mode: 'miller' | 'list') => void;
   setColumnSort: (columnIndex: number, field: SortField, direction: SortDirection) => void;
   setColumnWidth: (columnIndex: number, width: number) => void;
@@ -95,6 +97,67 @@ export const useFinderStore = create<FinderStore>((set) => ({
         delete newCache[id];
       }
       return { childrenByParentId: newCache };
+    }),
+
+  optimisticMove: (itemId, oldParentId, newParentId) =>
+    set((state) => {
+      const item = state.itemById[itemId];
+      if (!item) return state;
+
+      const updatedItem = { ...item, parentId: newParentId === 'workspace' ? null : newParentId };
+      const newItemById = { ...state.itemById, [itemId]: updatedItem };
+      const newChildren = { ...state.childrenByParentId };
+
+      // Remove from old parent
+      const oldKey = oldParentId;
+      if (newChildren[oldKey]) {
+        newChildren[oldKey] = newChildren[oldKey].filter((c) => c.id !== itemId);
+      }
+
+      // Add to new parent (if that parent's children are cached)
+      const newKey = newParentId;
+      if (newChildren[newKey]) {
+        newChildren[newKey] = [...newChildren[newKey], updatedItem];
+      }
+
+      // Mark new parent as having children so clicking it opens a column
+      if (newParentId !== 'workspace') {
+        const parent = newItemById[newParentId];
+        if (parent && !parent.hasChildren) {
+          const updatedParent = { ...parent, hasChildren: true };
+          newItemById[newParentId] = updatedParent;
+          // Also update in its own parent's children list so the chevron renders
+          const parentKey = parent.parentId ?? 'workspace';
+          if (newChildren[parentKey]) {
+            newChildren[parentKey] = newChildren[parentKey].map((s) =>
+              s.id === newParentId ? updatedParent : s,
+            );
+          }
+        }
+      }
+
+      // If the moved item was selected or in the column path, clean up navigation
+      let newColumnPath = state.columnPath;
+      const colIndex = newColumnPath.indexOf(itemId);
+      if (colIndex >= 0) {
+        newColumnPath = newColumnPath.slice(0, colIndex);
+      }
+
+      // Clear selection if the moved item was selected
+      const newSelections = { ...state.selections };
+      for (const [idx, selId] of Object.entries(newSelections)) {
+        if (selId === itemId) {
+          delete newSelections[Number(idx)];
+        }
+      }
+
+      return {
+        itemById: newItemById,
+        childrenByParentId: newChildren,
+        columnPath: newColumnPath,
+        selections: newSelections,
+        previewTargetId: state.previewTargetId === itemId ? null : state.previewTargetId,
+      };
     }),
 
   setViewMode: (mode) => set({ viewMode: mode }),

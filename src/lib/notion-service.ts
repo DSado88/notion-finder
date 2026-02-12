@@ -120,9 +120,14 @@ export class NotionService {
 
   // ─── Workspace Index ───
 
-  async ensureWorkspaceIndex(priority: Priority = 'low'): Promise<void> {
+  async ensureWorkspaceIndex(priority: Priority = 'low', allowStale = false): Promise<void> {
     // Already fresh
     if (this.workspaceIndex && Date.now() - this.workspaceIndexBuiltAt < this.ROOT_TTL) {
+      return;
+    }
+
+    // Have stale data + already rebuilding — return stale data if caller allows it
+    if (allowStale && this.workspaceIndex && this.workspaceIndexBuildingPromise) {
       return;
     }
 
@@ -368,31 +373,36 @@ export class NotionService {
     newParentId: string,
     priority: Priority = 'high',
   ): Promise<void> {
-    // Cycle detection: ensure workspace index is available, then check
-    await this.ensureWorkspaceIndex(priority);
-    const parentMap = new Map<string, string | null>();
-    for (const item of this.allItems) {
-      parentMap.set(item.id, item.parentId);
-    }
-    if (this.detectCycle(pageId, newParentId, parentMap)) {
-      throw new Error('Cycle detected: target is a descendant of the page being moved');
+    // Best-effort cycle detection: use stale index if available (don't block on rebuild).
+    // Notion's API validates moves server-side anyway, so stale data is fine here.
+    await this.ensureWorkspaceIndex(priority, /* allowStale */ true);
+    if (this.workspaceIndex) {
+      const parentMap = new Map<string, string | null>();
+      for (const item of this.allItems) {
+        parentMap.set(item.id, item.parentId);
+      }
+      if (this.detectCycle(pageId, newParentId, parentMap)) {
+        throw new Error('Cycle detected: target is a descendant of the page being moved');
+      }
     }
 
     // Look up old parent before the move so we can invalidate its cache
     const page = await notionFetch<NotionPage>(`/pages/${pageId}`, { priority });
     const oldParentId = getParentId(page.parent);
 
-    const parent: Record<string, unknown> =
-      newParentId === 'workspace'
-        ? { type: 'workspace', workspace: true }
-        : { type: 'page_id', page_id: newParentId };
-
-    await notionFetch(`/pages/${pageId}/move`, {
-      method: 'POST',
-      body: { parent },
-      priority,
-      apiVersion: '2025-09-03',
-    });
+    if (newParentId === 'workspace') {
+      // Public API doesn't support workspace as move target.
+      // Use Notion's internal API (submitTransaction) instead.
+      await this.moveToWorkspace(pageId, oldParentId);
+    } else {
+      const parent = { type: 'page_id', page_id: newParentId };
+      await notionFetch(`/pages/${pageId}/move`, {
+        method: 'POST',
+        body: { parent },
+        priority,
+        apiVersion: '2025-09-03',
+      });
+    }
 
     // Invalidate caches for both old and new parents
     this.cache.delete(`children:${newParentId}`);
@@ -401,6 +411,68 @@ export class NotionService {
     }
     // Force workspace index rebuild on next access
     this.workspaceIndexBuiltAt = 0;
+  }
+
+  /**
+   * Move a page to workspace root using Notion's internal API.
+   * The public API doesn't support workspace as a move target,
+   * so we use /api/v3/submitTransaction with the session token.
+   */
+  private async moveToWorkspace(pageId: string, oldParentId: string | null): Promise<void> {
+    const tokenV2 = process.env.NOTION_TOKEN_V2;
+    const spaceId = process.env.NOTION_SPACE_ID;
+    if (!tokenV2 || !spaceId) {
+      throw new Error('NOTION_TOKEN_V2 and NOTION_SPACE_ID are required for workspace moves');
+    }
+
+    const operations: Record<string, unknown>[] = [];
+
+    // Remove from old parent's content list
+    if (oldParentId) {
+      operations.push({
+        id: oldParentId,
+        table: 'block',
+        path: ['content'],
+        command: 'listRemove',
+        args: { id: pageId },
+      });
+    }
+
+    // Update the page's parent to workspace
+    operations.push({
+      id: pageId,
+      table: 'block',
+      path: [],
+      command: 'update',
+      args: {
+        parent_id: spaceId,
+        parent_table: 'space',
+        alive: true,
+      },
+    });
+
+    // Add to workspace's pages list
+    operations.push({
+      id: spaceId,
+      table: 'space',
+      path: ['pages'],
+      command: 'listAfter',
+      args: { id: pageId },
+    });
+
+    const res = await fetch('https://www.notion.so/api/v3/submitTransaction', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `token_v2=${tokenV2}`,
+      },
+      body: JSON.stringify({ operations }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Workspace move failed: HTTP ${res.status} — ${text}`);
+    }
   }
 
   /**

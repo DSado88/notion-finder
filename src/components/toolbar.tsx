@@ -2,6 +2,7 @@
 
 import { useShallow } from 'zustand/react/shallow';
 import { useFinderStore } from '@/stores/finder-store';
+import { CookieStatus } from './cookie-status';
 
 export function Toolbar() {
   const columnPath = useFinderStore(useShallow((s) => s.columnPath));
@@ -59,6 +60,8 @@ export function Toolbar() {
           </span>
         ))}
       </nav>
+
+      <CookieStatus />
 
       {/* View toggle */}
       <div className="flex flex-none items-center gap-0.5 rounded p-0.5" style={{ border: '1px solid var(--border)' }}>
