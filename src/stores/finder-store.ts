@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import type { FinderItem } from '@/types/finder';
+import type { FinderItem, SortField, SortDirection } from '@/types/finder';
 
 interface FinderStore {
   // ---- Navigation State ----
@@ -12,6 +12,12 @@ interface FinderStore {
   selections: Record<number, string>;
   previewTargetId: string | null;
 
+  // ---- Sort (per-column, keyed by columnIndex) ----
+  columnSort: Record<number, { field: SortField; direction: SortDirection }>;
+
+  // ---- Column widths (per-column, keyed by columnIndex) ----
+  columnWidths: Record<number, number>;
+
   // ---- Normalized Caches ----
   childrenByParentId: Record<string, FinderItem[]>;
   itemById: Record<string, FinderItem>;
@@ -21,6 +27,8 @@ interface FinderStore {
   setChildren: (parentId: string, items: FinderItem[]) => void;
   invalidateCache: (parentIds: string[]) => void;
   setViewMode: (mode: 'miller' | 'list') => void;
+  setColumnSort: (columnIndex: number, field: SortField, direction: SortDirection) => void;
+  setColumnWidth: (columnIndex: number, width: number) => void;
   breadcrumbClick: (segmentIndex: number) => void;
 }
 
@@ -29,6 +37,8 @@ export const useFinderStore = create<FinderStore>((set) => ({
   columnPath: ['workspace'],
   selections: {},
   previewTargetId: null,
+  columnSort: {},
+  columnWidths: {},
   childrenByParentId: {},
   itemById: {},
 
@@ -86,6 +96,19 @@ export const useFinderStore = create<FinderStore>((set) => ({
     }),
 
   setViewMode: (mode) => set({ viewMode: mode }),
+
+  setColumnSort: (columnIndex, field, direction) =>
+    set((state) => ({
+      columnSort: {
+        ...state.columnSort,
+        [columnIndex]: { field, direction },
+      },
+    })),
+
+  setColumnWidth: (columnIndex, width) =>
+    set((state) => ({
+      columnWidths: { ...state.columnWidths, [columnIndex]: Math.max(140, Math.min(600, width)) },
+    })),
 
   breadcrumbClick: (segmentIndex) =>
     set((state) => {

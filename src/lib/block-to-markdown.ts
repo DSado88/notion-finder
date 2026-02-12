@@ -9,9 +9,12 @@ function richTextToMarkdown(richTexts: NotionRichText[]): string {
   if (!richTexts || richTexts.length === 0) return '';
   return richTexts.map((rt) => {
     let text = rt.plain_text;
-    if (rt.href) {
-      text = `[${text}](${rt.href})`;
-    }
+    const a = rt.annotations;
+    if (a?.code) text = `\`${text}\``;
+    if (a?.bold) text = `**${text}**`;
+    if (a?.italic) text = `*${text}*`;
+    if (a?.strikethrough) text = `~~${text}~~`;
+    if (rt.href) text = `[${text}](${rt.href})`;
     return text;
   }).join('');
 }
@@ -21,7 +24,29 @@ function getBlockRichText(block: NotionBlock): NotionRichText[] {
   return data?.rich_text ?? [];
 }
 
-export function blocksToMarkdown(blocks: NotionBlock[]): string {
+function tableToMarkdown(rows: NotionBlock[]): string {
+  if (rows.length === 0) return '';
+  const lines: string[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const rowData = rows[i].table_row as { cells?: NotionRichText[][] } | undefined;
+    const cells = rowData?.cells ?? [];
+    const row = '| ' + cells.map((cell) => richTextToMarkdown(cell).replace(/\|/g, '\\|')).join(' | ') + ' |';
+    lines.push(row);
+    if (i === 0) {
+      lines.push('| ' + cells.map(() => '---').join(' | ') + ' |');
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Convert blocks to markdown.
+ * @param childrenMap — optional map of block ID → child blocks (for tables, toggles, etc.)
+ */
+export function blocksToMarkdown(
+  blocks: NotionBlock[],
+  childrenMap?: Map<string, NotionBlock[]>,
+): string {
   const lines: string[] = [];
 
   for (const block of blocks) {
@@ -112,6 +137,17 @@ export function blocksToMarkdown(blocks: NotionBlock[]): string {
           lines.push(`[${caption || bmData.url}](${bmData.url})`);
           lines.push('');
         }
+        break;
+      }
+
+      case 'table': {
+        const rows = childrenMap?.get(block.id) ?? [];
+        if (rows.length > 0) {
+          lines.push(tableToMarkdown(rows));
+        } else {
+          lines.push('*[table]*');
+        }
+        lines.push('');
         break;
       }
 

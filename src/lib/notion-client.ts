@@ -24,13 +24,15 @@ interface NotionFetchOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   priority?: Priority;
+  /** Override the Notion-Version header (e.g. for /move which requires 2025-09-03) */
+  apiVersion?: string;
 }
 
 export async function notionFetch<T>(
   path: string,
   options: NotionFetchOptions = {},
 ): Promise<T> {
-  const { method = 'GET', body, priority = 'high' } = options;
+  const { method = 'GET', body, priority = 'high', apiVersion } = options;
   const token = process.env.NOTION_API_TOKEN;
 
   if (!token) {
@@ -47,7 +49,7 @@ export async function notionFetch<T>(
       method,
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Notion-Version': NOTION_VERSION,
+        'Notion-Version': apiVersion ?? NOTION_VERSION,
         'Content-Type': 'application/json',
       },
       body: body ? JSON.stringify(body) : undefined,

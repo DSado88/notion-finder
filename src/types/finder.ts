@@ -4,6 +4,14 @@ export interface NotionRichText {
   type: string;
   plain_text: string;
   href: string | null;
+  annotations?: {
+    bold?: boolean;
+    italic?: boolean;
+    strikethrough?: boolean;
+    underline?: boolean;
+    code?: boolean;
+    color?: string;
+  };
 }
 
 export interface NotionParent {
@@ -98,11 +106,15 @@ export interface FinderItem {
   type: 'page' | 'database';
   icon: NotionIcon | null;
   hasChildren: boolean;
+  createdTime: string;
   lastEditedTime: string;
   parentType: NotionParent['type'];
   parentId: string | null;
   url: string;
 }
+
+export type SortField = 'title' | 'lastEdited' | 'created';
+export type SortDirection = 'asc' | 'desc';
 
 export interface ColumnState {
   parentId: string | null; // null = workspace root

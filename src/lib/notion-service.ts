@@ -57,6 +57,7 @@ function toFinderItem(obj: NotionPage | NotionDatabase): FinderItem {
     icon: obj.icon as NotionIcon | null,
     // Pages always might have children; databases always do
     hasChildren: true,
+    createdTime: obj.created_time,
     lastEditedTime: obj.last_edited_time,
     parentType: obj.parent.type,
     parentId: getParentId(obj.parent),
@@ -72,6 +73,7 @@ function blockToFinderItem(block: NotionBlock): FinderItem | null {
       type: block.type === 'child_database' ? 'database' : 'page',
       icon: null,
       hasChildren: block.has_children,
+      createdTime: block.created_time,
       lastEditedTime: block.last_edited_time,
       parentType: block.parent.type,
       parentId: getParentId(block.parent),
@@ -389,6 +391,7 @@ export class NotionService {
       method: 'POST',
       body: { parent },
       priority,
+      apiVersion: '2025-09-03',
     });
 
     // Invalidate caches for both old and new parents

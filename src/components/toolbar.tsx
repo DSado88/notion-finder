@@ -10,7 +10,6 @@ export function Toolbar() {
   const breadcrumbClick = useFinderStore((s) => s.breadcrumbClick);
   const viewMode = useFinderStore((s) => s.viewMode);
   const setViewMode = useFinderStore((s) => s.setViewMode);
-
   // Build breadcrumb segments from columnPath + selections
   const segments: { label: string; index: number }[] = columnPath.map(
     (parentId, i) => {

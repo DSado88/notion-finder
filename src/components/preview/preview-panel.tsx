@@ -125,15 +125,15 @@ export function PreviewPanel() {
 
   if (!previewTargetId) {
     return (
-      <div className="flex flex-1 items-center justify-center border-l border-gray-200 bg-gray-50/30 dark:border-white/10 dark:bg-white/[0.01]">
+      <div className="flex h-full min-w-[300px] flex-1 items-center justify-center border-l border-gray-200 bg-gray-50/30 dark:border-white/10 dark:bg-white/[0.01]">
         <p className="text-sm text-gray-400">Select an item to preview</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden border-l border-gray-200 dark:border-white/10">
-      <div className="flex-1 overflow-y-auto p-4">
+    <div className="flex h-full min-w-[300px] flex-1 flex-col overflow-hidden border-l border-gray-200 dark:border-white/10">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {isLoading && (
           <div className="flex flex-col gap-3">
             <div className="h-6 w-3/4 animate-pulse rounded bg-gray-100 dark:bg-white/5" />
