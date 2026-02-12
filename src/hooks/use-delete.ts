@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react';
 import { useFinderStore } from '@/stores/finder-store';
+import { invalidatePreview } from '@/hooks/use-preview';
 
 export function useDelete() {
   const optimisticDelete = useFinderStore((s) => s.optimisticDelete);
@@ -12,6 +13,7 @@ export function useDelete() {
   const archivePage = useCallback(
     async (pageId: string, parentId: string) => {
       const removed = optimisticDelete(pageId, parentId);
+      invalidatePreview(pageId);
 
       try {
         const res = await fetch(`/api/notion/archive/${pageId}`, {
@@ -20,8 +22,6 @@ export function useDelete() {
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          // Rollback: re-fetch from server
-          invalidateCache([parentId]);
           throw new Error(body.error || `Archive failed: HTTP ${res.status}`);
         }
       } catch (err) {
@@ -47,8 +47,6 @@ export function useDelete() {
         });
 
         if (!res.ok) {
-          // Full rollback via cache invalidation
-          invalidateCache([parentId]);
           const body = await res.json().catch(() => ({}));
           throw new Error(body.error || `Batch archive failed: HTTP ${res.status}`);
         }

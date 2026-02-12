@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react';
 import { useFinderStore } from '@/stores/finder-store';
+import { invalidatePreview } from '@/hooks/use-preview';
 
 export function useRename() {
   const optimisticRename = useFinderStore((s) => s.optimisticRename);
@@ -14,6 +15,7 @@ export function useRename() {
 
       // Optimistic: update immediately
       optimisticRename(pageId, title);
+      invalidatePreview(pageId);
       stopEditing();
 
       try {

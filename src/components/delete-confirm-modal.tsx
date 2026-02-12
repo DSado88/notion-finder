@@ -9,6 +9,7 @@ export function DeleteConfirmModal() {
   const setPendingDelete = useFinderStore((s) => s.setPendingDelete);
   const { archivePage, batchArchive } = useDelete();
   const [isArchiving, setIsArchiving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   const dismiss = useCallback(() => {
@@ -44,6 +45,7 @@ export function DeleteConfirmModal() {
   const handleArchive = useCallback(async () => {
     if (!pendingDelete) return;
     setIsArchiving(true);
+    setError(null);
     try {
       if (pendingDelete.items.length === 1) {
         await archivePage(pendingDelete.items[0].id, pendingDelete.parentId);
@@ -52,9 +54,9 @@ export function DeleteConfirmModal() {
         await batchArchive(ids, pendingDelete.parentId);
       }
       setPendingDelete(null);
-    } catch {
-      // Errors handled by hooks (rollback). Still close modal.
-      setPendingDelete(null);
+    } catch (err) {
+      // Hooks handle rollback. Keep modal open so user can retry.
+      setError(err instanceof Error ? err.message : 'Archive failed');
     } finally {
       setIsArchiving(false);
     }
@@ -82,6 +84,11 @@ export function DeleteConfirmModal() {
             ? 'All sub-pages will also be archived.'
             : 'This page will be moved to the trash in Notion.'}
         </p>
+        {error && (
+          <p className="mb-3 rounded border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs text-red-600 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
+            {error}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <button
             type="button"

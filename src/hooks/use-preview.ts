@@ -28,6 +28,16 @@ export type PreviewData = PagePreview | DatabasePreview;
 const previewCache = new Map<string, PreviewData>();
 const prefetchingIds = new Set<string>();
 
+/** Remove a cached preview entry (call after rename/delete to avoid stale data). */
+export function invalidatePreview(id: string) {
+  previewCache.delete(id);
+}
+
+/** Test-only: expose the cache Map for assertions. */
+export function _testGetCache() {
+  return previewCache;
+}
+
 /** Fire-and-forget prefetch. Call on hover to warm the cache before click. */
 export function prefetchPreview(item: FinderItem | null) {
   if (!item) return;
