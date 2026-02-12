@@ -4,9 +4,20 @@ import { useCallback } from 'react';
 import { useFinderStore } from '@/stores/finder-store';
 import { invalidatePreview } from '@/hooks/use-preview';
 
+/**
+ * Optimistically batch-delete items from the store AND clear their
+ * preview cache entries.  Extracted so batchArchive (a React hook
+ * callback) and tests can share the same logic.
+ */
+export function batchDeleteWithPreviewCleanup(pageIds: string[], parentId: string) {
+  useFinderStore.getState().optimisticBatchDelete(pageIds, parentId);
+  for (const id of pageIds) {
+    invalidatePreview(id);
+  }
+}
+
 export function useDelete() {
   const optimisticDelete = useFinderStore((s) => s.optimisticDelete);
-  const optimisticBatchDelete = useFinderStore((s) => s.optimisticBatchDelete);
   const invalidateCache = useFinderStore((s) => s.invalidateCache);
   const setPendingDelete = useFinderStore((s) => s.setPendingDelete);
 
@@ -37,7 +48,7 @@ export function useDelete() {
 
   const batchArchive = useCallback(
     async (pageIds: string[], parentId: string) => {
-      optimisticBatchDelete(pageIds, parentId);
+      batchDeleteWithPreviewCleanup(pageIds, parentId);
 
       try {
         const res = await fetch('/api/notion/batch-archive', {
@@ -62,7 +73,7 @@ export function useDelete() {
         throw err;
       }
     },
-    [optimisticBatchDelete, invalidateCache],
+    [invalidateCache],
   );
 
   return { archivePage, batchArchive, setPendingDelete };

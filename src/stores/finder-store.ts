@@ -203,6 +203,14 @@ export const useFinderStore = create<FinderStore>((set) => ({
         newColumnPath = newColumnPath.slice(0, colIndex);
       }
 
+      // CR-6: If old parent became childless, collapse its empty column
+      if (oldKey !== 'workspace' && newChildren[oldKey]?.length === 0) {
+        const oldParentColIndex = newColumnPath.indexOf(oldKey);
+        if (oldParentColIndex >= 0) {
+          newColumnPath = newColumnPath.slice(0, oldParentColIndex);
+        }
+      }
+
       // Clear selection if the moved item was selected
       const newSelections = { ...state.selections };
       for (const [idx, selId] of Object.entries(newSelections)) {
@@ -222,12 +230,19 @@ export const useFinderStore = create<FinderStore>((set) => ({
         }
       }
 
+      // CR-7: Clear stale selectionAnchor if moved item was the anchor
+      const newSelectionAnchor = { ...state.selectionAnchor };
+      for (const [idx, anchorId] of Object.entries(newSelectionAnchor)) {
+        if (anchorId === itemId) delete newSelectionAnchor[Number(idx)];
+      }
+
       return {
         itemById: newItemById,
         childrenByParentId: newChildren,
         columnPath: newColumnPath,
         selections: newSelections,
         multiSelections: newMultiSelections,
+        selectionAnchor: newSelectionAnchor,
         previewTargetId: state.previewTargetId === itemId ? null : state.previewTargetId,
       };
     }),
@@ -429,6 +444,14 @@ export const useFinderStore = create<FinderStore>((set) => ({
         newColumnPath = newColumnPath.slice(0, colIndex);
       }
 
+      // CR-6: If parent became childless, collapse its empty column
+      if (parentKey !== 'workspace' && newChildren[parentKey]?.length === 0) {
+        const parentColIndex = newColumnPath.indexOf(parentKey);
+        if (parentColIndex >= 0) {
+          newColumnPath = newColumnPath.slice(0, parentColIndex);
+        }
+      }
+
       // Clear selection if deleted item was selected
       const newSelections = { ...state.selections };
       for (const [idx, selId] of Object.entries(newSelections)) {
@@ -493,6 +516,14 @@ export const useFinderStore = create<FinderStore>((set) => ({
       const firstColIndex = newColumnPath.findIndex((id) => idSet.has(id));
       if (firstColIndex >= 0) {
         newColumnPath = newColumnPath.slice(0, firstColIndex);
+      }
+
+      // CR-6: If parent became childless, collapse its empty column
+      if (parentKey !== 'workspace' && newChildren[parentKey]?.length === 0) {
+        const parentColIndex = newColumnPath.indexOf(parentKey);
+        if (parentColIndex >= 0) {
+          newColumnPath = newColumnPath.slice(0, parentColIndex);
+        }
       }
 
       // Clean up selections

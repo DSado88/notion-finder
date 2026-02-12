@@ -529,3 +529,162 @@ describe('Defect CR-5: move clears item from multiSelections', () => {
     expect(multi).toContain('b');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// Defect CR-6: Deleting last child leaves stale parent in columnPath
+//
+// BEFORE FIX: CR-3 added the fix to set parent.hasChildren = false
+// when all children are removed. But when that parent is currently
+// in columnPath (i.e. its children column is visible), the parent
+// is NOT removed from columnPath. This creates a phantom empty column.
+// markNoChildren correctly removes the item from columnPath when
+// hasChildren becomes false, but optimisticDelete, optimisticBatchDelete,
+// and optimisticMove (for old parent) don't do this.
+//
+// FIX: After setting parent.hasChildren = false, also check if the
+// parent is in columnPath and truncate it (same logic as markNoChildren).
+// ═══════════════════════════════════════════════════════════════════
+
+describe('Defect CR-6: deleting last child removes parent from columnPath', () => {
+  it('single delete: parent column is removed from columnPath when last child deleted', () => {
+    const parent = makeItem({ id: 'p', title: 'Parent', hasChildren: true });
+    const child = makeItem({ id: 'c', title: 'Child', parentId: 'p', parentType: 'page_id' });
+    seedStore([parent, child], { workspace: [parent], p: [child] });
+
+    // Navigate into parent's children: workspace > p
+    useFinderStore.getState().selectItem(0, 'p');
+    expect(useFinderStore.getState().columnPath).toEqual(['workspace', 'p']);
+
+    // Delete the last child
+    useFinderStore.getState().optimisticDelete('c', 'p');
+
+    const state = useFinderStore.getState();
+    // Parent should have hasChildren = false (CR-3)
+    expect(state.itemById['p'].hasChildren).toBe(false);
+    // Parent should be removed from columnPath (CR-6)
+    expect(state.columnPath).toEqual(['workspace']);
+  });
+
+  it('batch delete: parent column is removed from columnPath when all children deleted', () => {
+    const parent = makeItem({ id: 'p', title: 'Parent', hasChildren: true });
+    const c1 = makeItem({ id: 'c1', title: 'C1', parentId: 'p', parentType: 'page_id' });
+    const c2 = makeItem({ id: 'c2', title: 'C2', parentId: 'p', parentType: 'page_id' });
+    seedStore([parent, c1, c2], { workspace: [parent], p: [c1, c2] });
+
+    // Navigate into parent's children
+    useFinderStore.getState().selectItem(0, 'p');
+    expect(useFinderStore.getState().columnPath).toEqual(['workspace', 'p']);
+
+    // Batch delete all children
+    useFinderStore.getState().optimisticBatchDelete(['c1', 'c2'], 'p');
+
+    const state = useFinderStore.getState();
+    expect(state.itemById['p'].hasChildren).toBe(false);
+    expect(state.columnPath).toEqual(['workspace']);
+  });
+
+  it('move last child away: old parent column is removed from columnPath', () => {
+    const oldParent = makeItem({ id: 'op', title: 'OldParent', hasChildren: true });
+    const newParent = makeItem({ id: 'np', title: 'NewParent', hasChildren: false });
+    const child = makeItem({ id: 'c', title: 'Child', parentId: 'op', parentType: 'page_id' });
+    seedStore(
+      [oldParent, newParent, child],
+      { workspace: [oldParent, newParent], op: [child], np: [] },
+    );
+
+    // Navigate into old parent's children
+    useFinderStore.getState().selectItem(0, 'op');
+    expect(useFinderStore.getState().columnPath).toEqual(['workspace', 'op']);
+
+    // Move the only child to new parent
+    useFinderStore.getState().optimisticMove('c', 'op', 'np');
+
+    const state = useFinderStore.getState();
+    expect(state.itemById['op'].hasChildren).toBe(false);
+    // Old parent's empty column should be collapsed
+    expect(state.columnPath).not.toContain('op');
+  });
+
+  it('single delete: parent stays in columnPath when siblings remain', () => {
+    const parent = makeItem({ id: 'p', title: 'Parent', hasChildren: true });
+    const c1 = makeItem({ id: 'c1', title: 'C1', parentId: 'p', parentType: 'page_id' });
+    const c2 = makeItem({ id: 'c2', title: 'C2', parentId: 'p', parentType: 'page_id' });
+    seedStore([parent, c1, c2], { workspace: [parent], p: [c1, c2] });
+
+    useFinderStore.getState().selectItem(0, 'p');
+    expect(useFinderStore.getState().columnPath).toEqual(['workspace', 'p']);
+
+    // Delete only one child — parent still has children
+    useFinderStore.getState().optimisticDelete('c1', 'p');
+
+    const state = useFinderStore.getState();
+    expect(state.itemById['p'].hasChildren).toBe(true);
+    // Parent should still be in columnPath
+    expect(state.columnPath).toEqual(['workspace', 'p']);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Defect CR-7: optimisticMove doesn't clear stale selectionAnchor
+//
+// BEFORE FIX: optimisticMove cleans up `selections` and
+// `multiSelections` for the moved item, but does NOT clean up
+// `selectionAnchor`. If the moved item was the anchor for a column,
+// the stale ID persists. The next Shift+Click in that column will
+// try to find the anchor in the children list, get -1, and fall
+// back to a plain click instead of range-selecting.
+//
+// This is the same class of bug as CR-4 (stale anchor after delete),
+// but in the move code path.
+//
+// FIX: After cleaning multiSelections, also remove selectionAnchor
+// entries whose value equals the moved item's ID.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('Defect CR-7: optimisticMove clears stale selectionAnchor', () => {
+  it('moved item is removed from selectionAnchor of its old column', () => {
+    const parent = makeItem({ id: 'p', title: 'Parent', hasChildren: true });
+    const target = makeItem({ id: 't', title: 'Target', hasChildren: false });
+    const a = makeItem({ id: 'a', title: 'A', parentId: 'p', parentType: 'page_id' });
+    const b = makeItem({ id: 'b', title: 'B', parentId: 'p', parentType: 'page_id' });
+    const c = makeItem({ id: 'c', title: 'C', parentId: 'p', parentType: 'page_id' });
+    seedStore(
+      [parent, target, a, b, c],
+      { workspace: [parent, target], p: [a, b, c] },
+    );
+
+    // Select parent to open its children column
+    useFinderStore.getState().selectItem(0, 'p');
+    // Select item 'b' in column 1 — this sets selectionAnchor[1] = 'b'
+    useFinderStore.getState().selectItem(1, 'b');
+    expect(useFinderStore.getState().selectionAnchor[1]).toBe('b');
+
+    // Move 'b' to a different parent
+    useFinderStore.getState().optimisticMove('b', 'p', 't');
+
+    // The anchor for column 1 should be cleared because 'b' is no longer there
+    expect(useFinderStore.getState().selectionAnchor[1]).toBeUndefined();
+  });
+
+  it('selectionAnchor is preserved when the moved item was NOT the anchor', () => {
+    const parent = makeItem({ id: 'p', title: 'Parent', hasChildren: true });
+    const target = makeItem({ id: 't', title: 'Target', hasChildren: false });
+    const a = makeItem({ id: 'a', title: 'A', parentId: 'p', parentType: 'page_id' });
+    const b = makeItem({ id: 'b', title: 'B', parentId: 'p', parentType: 'page_id' });
+    seedStore(
+      [parent, target, a, b],
+      { workspace: [parent, target], p: [a, b] },
+    );
+
+    // Select parent, then select 'a' as the anchor
+    useFinderStore.getState().selectItem(0, 'p');
+    useFinderStore.getState().selectItem(1, 'a');
+    expect(useFinderStore.getState().selectionAnchor[1]).toBe('a');
+
+    // Move 'b' (not the anchor) to a different parent
+    useFinderStore.getState().optimisticMove('b', 'p', 't');
+
+    // Anchor should still be 'a'
+    expect(useFinderStore.getState().selectionAnchor[1]).toBe('a');
+  });
+});
