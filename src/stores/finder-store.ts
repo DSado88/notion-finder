@@ -162,6 +162,16 @@ export const useFinderStore = create<FinderStore>((set) => ({
       const oldKey = oldParentId;
       if (newChildren[oldKey]) {
         newChildren[oldKey] = newChildren[oldKey].filter((c) => c.id !== itemId);
+        // If last child removed, clear old parent's hasChildren
+        if (oldKey !== 'workspace' && newChildren[oldKey].length === 0 && newItemById[oldKey]) {
+          newItemById[oldKey] = { ...newItemById[oldKey], hasChildren: false };
+          const gpKey = newItemById[oldKey].parentId ?? 'workspace';
+          if (newChildren[gpKey]) {
+            newChildren[gpKey] = newChildren[gpKey].map((s) =>
+              s.id === oldKey ? newItemById[oldKey] : s,
+            );
+          }
+        }
       }
 
       // Add to new parent (if that parent's children are cached)
@@ -201,11 +211,23 @@ export const useFinderStore = create<FinderStore>((set) => ({
         }
       }
 
+      // Clear from multi-selections
+      const newMultiSelections = { ...state.multiSelections };
+      for (const [idx, ids] of Object.entries(newMultiSelections)) {
+        const filtered = ids.filter((id) => id !== itemId);
+        if (filtered.length > 0) {
+          newMultiSelections[Number(idx)] = filtered;
+        } else {
+          delete newMultiSelections[Number(idx)];
+        }
+      }
+
       return {
         itemById: newItemById,
         childrenByParentId: newChildren,
         columnPath: newColumnPath,
         selections: newSelections,
+        multiSelections: newMultiSelections,
         previewTargetId: state.previewTargetId === itemId ? null : state.previewTargetId,
       };
     }),
@@ -387,6 +409,17 @@ export const useFinderStore = create<FinderStore>((set) => ({
       const newChildren = { ...state.childrenByParentId };
       if (newChildren[parentKey]) {
         newChildren[parentKey] = newChildren[parentKey].filter((s) => s.id !== itemId);
+        // If last child removed, clear parent's hasChildren
+        if (parentKey !== 'workspace' && newChildren[parentKey].length === 0 && newItemById[parentKey]) {
+          newItemById[parentKey] = { ...newItemById[parentKey], hasChildren: false };
+          // Also update parent in its grandparent's children list
+          const gpKey = newItemById[parentKey].parentId ?? 'workspace';
+          if (newChildren[gpKey]) {
+            newChildren[gpKey] = newChildren[gpKey].map((s) =>
+              s.id === parentKey ? newItemById[parentKey] : s,
+            );
+          }
+        }
       }
 
       // Clean up navigation if deleted item was in columnPath
@@ -413,12 +446,19 @@ export const useFinderStore = create<FinderStore>((set) => ({
         }
       }
 
+      // Clear stale selectionAnchor
+      const newSelectionAnchor = { ...state.selectionAnchor };
+      for (const [idx, anchorId] of Object.entries(newSelectionAnchor)) {
+        if (anchorId === itemId) delete newSelectionAnchor[Number(idx)];
+      }
+
       return {
         itemById: newItemById,
         childrenByParentId: newChildren,
         columnPath: newColumnPath,
         selections: newSelections,
         multiSelections: newMultiSelections,
+        selectionAnchor: newSelectionAnchor,
         previewTargetId: state.previewTargetId === itemId ? null : state.previewTargetId,
       };
     });
@@ -436,6 +476,16 @@ export const useFinderStore = create<FinderStore>((set) => ({
       const parentKey = parentId;
       if (newChildren[parentKey]) {
         newChildren[parentKey] = newChildren[parentKey].filter((s) => !idSet.has(s.id));
+        // If all children removed, clear parent's hasChildren
+        if (parentKey !== 'workspace' && newChildren[parentKey].length === 0 && newItemById[parentKey]) {
+          newItemById[parentKey] = { ...newItemById[parentKey], hasChildren: false };
+          const gpKey = newItemById[parentKey].parentId ?? 'workspace';
+          if (newChildren[gpKey]) {
+            newChildren[gpKey] = newChildren[gpKey].map((s) =>
+              s.id === parentKey ? newItemById[parentKey] : s,
+            );
+          }
+        }
       }
 
       // Clean up columnPath
@@ -462,12 +512,19 @@ export const useFinderStore = create<FinderStore>((set) => ({
         }
       }
 
+      // Clean up stale selectionAnchors
+      const newSelectionAnchor = { ...state.selectionAnchor };
+      for (const [idx, anchorId] of Object.entries(newSelectionAnchor)) {
+        if (idSet.has(anchorId)) delete newSelectionAnchor[Number(idx)];
+      }
+
       return {
         itemById: newItemById,
         childrenByParentId: newChildren,
         columnPath: newColumnPath,
         selections: newSelections,
         multiSelections: newMultiSelections,
+        selectionAnchor: newSelectionAnchor,
         previewTargetId: state.previewTargetId && idSet.has(state.previewTargetId) ? null : state.previewTargetId,
       };
     });

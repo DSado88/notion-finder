@@ -363,3 +363,169 @@ describe('Defect CR-2: delete rollback fires exactly once', () => {
     expect(invalidateCalls[0]).toEqual(['workspace']);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// Defect CR-3: Deleting last child doesn't clear parent's hasChildren
+//
+// BEFORE FIX: optimisticDelete removes the child from the children
+// array but never checks if the array is now empty. Parent keeps
+// hasChildren=true → stale chevron, clicking opens empty column.
+//
+// FIX: After removing child, check if parent's children array is
+// empty. If so, set parent.hasChildren = false. Same for batch delete
+// and optimisticMove (removing from old parent).
+// ═══════════════════════════════════════════════════════════════════
+
+describe('Defect CR-3: deleting last child clears parent hasChildren', () => {
+  it('single delete: parent.hasChildren becomes false when last child removed', () => {
+    const parent = makeItem({ id: 'p', title: 'Parent', hasChildren: true });
+    const child = makeItem({ id: 'c', title: 'Child', parentId: 'p', parentType: 'page_id' });
+    seedStore([parent, child], { workspace: [parent], p: [child] });
+
+    useFinderStore.getState().optimisticDelete('c', 'p');
+
+    const state = useFinderStore.getState();
+    expect(state.childrenByParentId['p']).toEqual([]);
+    expect(state.itemById['p'].hasChildren).toBe(false);
+  });
+
+  it('single delete: parent keeps hasChildren when siblings remain', () => {
+    const parent = makeItem({ id: 'p', title: 'Parent', hasChildren: true });
+    const c1 = makeItem({ id: 'c1', title: 'C1', parentId: 'p', parentType: 'page_id' });
+    const c2 = makeItem({ id: 'c2', title: 'C2', parentId: 'p', parentType: 'page_id' });
+    seedStore([parent, c1, c2], { workspace: [parent], p: [c1, c2] });
+
+    useFinderStore.getState().optimisticDelete('c1', 'p');
+
+    const state = useFinderStore.getState();
+    expect(state.childrenByParentId['p'].map((i) => i.id)).toEqual(['c2']);
+    expect(state.itemById['p'].hasChildren).toBe(true);
+  });
+
+  it('batch delete: parent.hasChildren becomes false when all children removed', () => {
+    const parent = makeItem({ id: 'p', title: 'Parent', hasChildren: true });
+    const c1 = makeItem({ id: 'c1', title: 'C1', parentId: 'p', parentType: 'page_id' });
+    const c2 = makeItem({ id: 'c2', title: 'C2', parentId: 'p', parentType: 'page_id' });
+    seedStore([parent, c1, c2], { workspace: [parent], p: [c1, c2] });
+
+    useFinderStore.getState().optimisticBatchDelete(['c1', 'c2'], 'p');
+
+    const state = useFinderStore.getState();
+    expect(state.childrenByParentId['p']).toEqual([]);
+    expect(state.itemById['p'].hasChildren).toBe(false);
+  });
+
+  it('move: old parent hasChildren becomes false when last child moved away', () => {
+    const oldParent = makeItem({ id: 'op', title: 'OldParent', hasChildren: true });
+    const newParent = makeItem({ id: 'np', title: 'NewParent', hasChildren: false });
+    const child = makeItem({ id: 'c', title: 'Child', parentId: 'op', parentType: 'page_id' });
+    seedStore(
+      [oldParent, newParent, child],
+      { workspace: [oldParent, newParent], op: [child], np: [] },
+    );
+
+    useFinderStore.getState().optimisticMove('c', 'op', 'np');
+
+    const state = useFinderStore.getState();
+    expect(state.itemById['op'].hasChildren).toBe(false);
+    expect(state.itemById['np'].hasChildren).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Defect CR-4: Batch delete doesn't clear stale selectionAnchor
+//
+// BEFORE FIX: optimisticBatchDelete cleans multiSelections but not
+// selectionAnchor. If the anchor is deleted, the next Shift+Click
+// uses a stale ID → findIndex returns -1 → falls through to plain
+// click instead of range-selecting.
+//
+// FIX: After cleaning multiSelections, also remove selectionAnchor
+// entries whose value is in the deleted set. Same for single delete.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('Defect CR-4: delete clears stale selectionAnchor', () => {
+  it('single delete: clears anchor if deleted item was the anchor', () => {
+    const items = [
+      makeItem({ id: 'a', title: 'A' }),
+      makeItem({ id: 'b', title: 'B' }),
+    ];
+    seedStore(items, { workspace: items });
+
+    // Select 'a' → sets anchor
+    useFinderStore.getState().selectItem(0, 'a');
+    expect(useFinderStore.getState().selectionAnchor[0]).toBe('a');
+
+    // Delete the anchor item
+    useFinderStore.getState().optimisticDelete('a', 'workspace');
+    expect(useFinderStore.getState().selectionAnchor[0]).toBeUndefined();
+  });
+
+  it('batch delete: clears anchor if it was in the deleted set', () => {
+    const items = [
+      makeItem({ id: 'a', title: 'A' }),
+      makeItem({ id: 'b', title: 'B' }),
+      makeItem({ id: 'c', title: 'C' }),
+    ];
+    seedStore(items, { workspace: items });
+
+    useFinderStore.getState().selectItem(0, 'b');
+    expect(useFinderStore.getState().selectionAnchor[0]).toBe('b');
+
+    useFinderStore.getState().optimisticBatchDelete(['a', 'b'], 'workspace');
+    expect(useFinderStore.getState().selectionAnchor[0]).toBeUndefined();
+  });
+
+  it('batch delete: keeps anchor if it was NOT in the deleted set', () => {
+    const items = [
+      makeItem({ id: 'a', title: 'A' }),
+      makeItem({ id: 'b', title: 'B' }),
+      makeItem({ id: 'c', title: 'C' }),
+    ];
+    seedStore(items, { workspace: items });
+
+    useFinderStore.getState().selectItem(0, 'c');
+    expect(useFinderStore.getState().selectionAnchor[0]).toBe('c');
+
+    useFinderStore.getState().optimisticBatchDelete(['a', 'b'], 'workspace');
+    expect(useFinderStore.getState().selectionAnchor[0]).toBe('c');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Defect CR-5: optimisticMove doesn't clean multiSelections
+//
+// BEFORE FIX: After moving an item, optimisticMove clears
+// selections but doesn't remove the moved item from
+// multiSelections. The stale ID persists in the old column's
+// multi-selection array.
+//
+// FIX: Filter the moved item's ID from all multiSelections arrays.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('Defect CR-5: move clears item from multiSelections', () => {
+  it('moved item is removed from old column multiSelections', () => {
+    const parent = makeItem({ id: 'p', title: 'Parent', hasChildren: true });
+    const target = makeItem({ id: 't', title: 'Target', hasChildren: false });
+    const a = makeItem({ id: 'a', title: 'A', parentId: 'p', parentType: 'page_id' });
+    const b = makeItem({ id: 'b', title: 'B', parentId: 'p', parentType: 'page_id' });
+    seedStore(
+      [parent, target, a, b],
+      { workspace: [parent, target], p: [a, b] },
+    );
+
+    // Multi-select both items in column 1
+    useFinderStore.getState().selectItem(0, 'p'); // open column for 'p'
+    useFinderStore.getState().toggleMultiSelect(1, 'a');
+    useFinderStore.getState().toggleMultiSelect(1, 'b');
+    expect(useFinderStore.getState().multiSelections[1]).toEqual(['a', 'b']);
+
+    // Move 'a' to a different parent
+    useFinderStore.getState().optimisticMove('a', 'p', 't');
+
+    // 'a' should be removed from multiSelections
+    const multi = useFinderStore.getState().multiSelections[1] ?? [];
+    expect(multi).not.toContain('a');
+    expect(multi).toContain('b');
+  });
+});
