@@ -48,6 +48,12 @@ The `NOTION_TOKEN_V2` and `NOTION_SPACE_ID` are only needed for operations that 
 ### 3. Install and Run
 
 ```bash
+./start.sh
+```
+
+This checks for Node.js, installs dependencies, verifies your `.env.local`, and starts the dev server. Or do it manually:
+
+```bash
 npm install
 npm run dev
 ```
