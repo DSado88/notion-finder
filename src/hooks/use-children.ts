@@ -10,6 +10,7 @@ import { useFinderStore } from '@/stores/finder-store';
 export function useChildren(parentId: string) {
   const children = useFinderStore((s) => s.childrenByParentId[parentId]);
   const setChildren = useFinderStore((s) => s.setChildren);
+  const markNoChildren = useFinderStore((s) => s.markNoChildren);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,6 +29,9 @@ export function useChildren(parentId: string) {
       .then((data: { children: Parameters<typeof setChildren>[1] }) => {
         if (!cancelled) {
           setChildren(parentId, data.children);
+          if (data.children.length === 0) {
+            markNoChildren(parentId);
+          }
           setIsLoading(false);
         }
       })

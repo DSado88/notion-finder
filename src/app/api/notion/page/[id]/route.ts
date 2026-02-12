@@ -6,6 +6,18 @@ import { notionFetch } from '@/lib/notion-client';
 
 export const dynamic = 'force-dynamic';
 
+function extractPageTitle(properties: Record<string, unknown> | undefined): string {
+  if (!properties) return '';
+  // Find the property with type "title" (name varies — "title", "Name", "Task", etc.)
+  for (const prop of Object.values(properties)) {
+    const p = prop as { type?: string; title?: { plain_text: string }[] };
+    if (p.type === 'title' && Array.isArray(p.title)) {
+      return p.title.map((t) => t.plain_text).join('');
+    }
+  }
+  return '';
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -33,9 +45,7 @@ export async function GET(
     return NextResponse.json({
       page: {
         id: page.id,
-        title: page.properties?.title?.title
-          ?.map((t: { plain_text: string }) => t.plain_text)
-          .join('') || 'Untitled',
+        title: extractPageTitle(page.properties) || 'Untitled',
         icon: page.icon,
         lastEditedTime: page.last_edited_time,
         createdTime: page.created_time,

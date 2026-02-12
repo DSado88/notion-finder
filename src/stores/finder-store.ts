@@ -30,6 +30,8 @@ interface FinderStore {
   setColumnSort: (columnIndex: number, field: SortField, direction: SortDirection) => void;
   setColumnWidth: (columnIndex: number, width: number) => void;
   breadcrumbClick: (segmentIndex: number) => void;
+  /** Mark an item as having no children (removes chevron, prevents empty columns) */
+  markNoChildren: (itemId: string) => void;
 }
 
 export const useFinderStore = create<FinderStore>((set) => ({
@@ -109,6 +111,35 @@ export const useFinderStore = create<FinderStore>((set) => ({
     set((state) => ({
       columnWidths: { ...state.columnWidths, [columnIndex]: Math.max(140, Math.min(600, width)) },
     })),
+
+  markNoChildren: (itemId) =>
+    set((state) => {
+      const item = state.itemById[itemId];
+      if (!item) return state;
+
+      // Update the item in itemById
+      const updatedItem = { ...item, hasChildren: false };
+      const newItemById = { ...state.itemById, [itemId]: updatedItem };
+
+      // Also update in childrenByParentId so MillerItem re-renders without chevron
+      const newChildrenByParentId = { ...state.childrenByParentId };
+      const parentKey = item.parentId ?? 'workspace';
+      const siblings = newChildrenByParentId[parentKey];
+      if (siblings) {
+        newChildrenByParentId[parentKey] = siblings.map((s) =>
+          s.id === itemId ? updatedItem : s,
+        );
+      }
+
+      // Remove the empty column if it's in the path
+      let newColumnPath = state.columnPath;
+      const colIndex = newColumnPath.indexOf(itemId);
+      if (colIndex >= 0) {
+        newColumnPath = newColumnPath.slice(0, colIndex);
+      }
+
+      return { itemById: newItemById, childrenByParentId: newChildrenByParentId, columnPath: newColumnPath };
+    }),
 
   breadcrumbClick: (segmentIndex) =>
     set((state) => {
