@@ -15,8 +15,12 @@ function EditableTitle({
   data: Extract<PreviewData, { type: 'page' }>;
 }) {
   const { renamePage } = useRename();
+  // Use store title (always current via optimistic update) instead of
+  // data.title which can be stale from a re-fetch that races the rename.
+  const storeTitle = useFinderStore((s) => s.itemById[itemId]?.title);
+  const title = storeTitle || data.title || 'Untitled';
   const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(data.title || 'Untitled');
+  const [draft, setDraft] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
   const confirmedRef = useRef(false);
   const readyRef = useRef(false);
@@ -25,7 +29,7 @@ function EditableTitle({
     if (isEditing && inputRef.current) {
       confirmedRef.current = false;
       readyRef.current = false;
-      setDraft(data.title || 'Untitled');
+      setDraft(title);
       const rafId = requestAnimationFrame(() => {
         if (inputRef.current) {
           inputRef.current.focus();
@@ -35,7 +39,7 @@ function EditableTitle({
       });
       return () => cancelAnimationFrame(rafId);
     }
-  }, [isEditing, data.title]);
+  }, [isEditing, title]);
 
   const confirm = useCallback(() => {
     if (!readyRef.current) return;
@@ -75,7 +79,7 @@ function EditableTitle({
       onDoubleClick={() => setIsEditing(true)}
     >
       {data.icon && <span className="mr-2">{data.icon}</span>}
-      {data.title || 'Untitled'}
+      {title}
     </h2>
   );
 }
