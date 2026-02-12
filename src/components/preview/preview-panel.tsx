@@ -25,6 +25,20 @@ function PagePreviewContent({ data }: { data: Extract<PreviewData, { type: 'page
       <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }}>
         Last edited {new Date(data.lastEditedTime).toLocaleDateString()}
       </p>
+      {data.properties.length > 0 && (
+        <div className="mb-4 rounded" style={{ border: '1px solid var(--border)' }}>
+          <table className="w-full text-[13px]">
+            <tbody>
+              {data.properties.map((prop) => (
+                <tr key={prop.name} className="last:border-0" style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td className="px-2.5 py-1.5 font-medium" style={{ color: 'var(--muted)', width: '35%' }}>{prop.name}</td>
+                  <td className="px-2.5 py-1.5" style={{ color: 'var(--foreground)' }}>{prop.value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {data.markdown ? (
         <div className="prose prose-base dark:prose-invert max-w-none leading-relaxed prose-headings:font-semibold prose-p:my-1 prose-li:my-0">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>

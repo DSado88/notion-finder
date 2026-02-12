@@ -8,6 +8,7 @@ interface PagePreview {
   title: string;
   icon: string | null;
   markdown: string;
+  properties: { name: string; value: string }[];
   url: string;
   lastEditedTime: string;
 }
@@ -75,6 +76,7 @@ export function usePreview(item: FinderItem | null) {
             title: json.page.title,
             icon: json.page.icon?.emoji ?? null,
             markdown: json.markdown,
+            properties: json.properties ?? [],
             url: json.page.url,
             lastEditedTime: json.page.lastEditedTime,
           };
