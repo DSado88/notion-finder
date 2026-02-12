@@ -8,6 +8,8 @@ export function Toolbar() {
   const selections = useFinderStore(useShallow((s) => s.selections));
   const itemById = useFinderStore((s) => s.itemById);
   const breadcrumbClick = useFinderStore((s) => s.breadcrumbClick);
+  const viewMode = useFinderStore((s) => s.viewMode);
+  const setViewMode = useFinderStore((s) => s.setViewMode);
 
   // Build breadcrumb segments from columnPath + selections
   const segments: { label: string; index: number }[] = columnPath.map(
@@ -36,7 +38,7 @@ export function Toolbar() {
   return (
     <div className="flex h-9 flex-none items-center gap-1 border-b border-gray-200 bg-gray-50/80 px-3 dark:border-white/10 dark:bg-white/[0.02]">
       {/* Breadcrumbs */}
-      <nav className="flex min-w-0 items-center gap-0.5 text-[12px]">
+      <nav className="flex min-w-0 flex-1 items-center gap-0.5 text-[12px]">
         {segments.map((seg, i) => (
           <span key={`${seg.index}-${i}`} className="flex items-center gap-0.5">
             {i > 0 && (
@@ -58,6 +60,34 @@ export function Toolbar() {
           </span>
         ))}
       </nav>
+
+      {/* View toggle */}
+      <div className="flex flex-none items-center gap-0.5 rounded border border-gray-200 bg-white p-0.5 dark:border-white/10 dark:bg-white/5">
+        <button
+          type="button"
+          onClick={() => setViewMode('miller')}
+          className={`rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+            viewMode === 'miller'
+              ? 'bg-gray-200 text-gray-900 dark:bg-white/15 dark:text-gray-100'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+          }`}
+          title="Columns view"
+        >
+          |||
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode('list')}
+          className={`rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+            viewMode === 'list'
+              ? 'bg-gray-200 text-gray-900 dark:bg-white/15 dark:text-gray-100'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+          }`}
+          title="List view"
+        >
+          &#x2630;
+        </button>
+      </div>
     </div>
   );
 }
