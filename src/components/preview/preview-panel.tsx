@@ -7,31 +7,32 @@ import remarkGfm from 'remark-gfm';
 
 function PagePreviewContent({ data }: { data: Extract<PreviewData, { type: 'page' }> }) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+    <div className="flex flex-col">
+      <div className="mb-1 flex items-start justify-between gap-2">
+        <h2 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
+          {data.icon && <span className="mr-2">{data.icon}</span>}
           {data.title || 'Untitled'}
         </h2>
         <a
           href={data.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-none text-[11px] text-blue-500 hover:underline"
+          className="mt-1.5 flex-none text-[11px] opacity-40 hover:opacity-70"
         >
-          Open in Notion
+          Open in Notion &#x2197;
         </a>
       </div>
-      <p className="text-[11px] text-gray-400">
+      <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }}>
         Last edited {new Date(data.lastEditedTime).toLocaleDateString()}
       </p>
       {data.markdown ? (
-        <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed">
+        <div className="prose prose-base dark:prose-invert max-w-none leading-relaxed prose-headings:font-semibold prose-p:my-1 prose-li:my-0">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {data.markdown}
           </ReactMarkdown>
         </div>
       ) : (
-        <p className="text-sm text-gray-400 italic">Empty page</p>
+        <p className="text-sm italic" style={{ color: 'var(--muted)' }}>Empty page</p>
       )}
     </div>
   );
@@ -125,14 +126,14 @@ export function PreviewPanel() {
 
   if (!previewTargetId) {
     return (
-      <div className="flex h-full min-w-[300px] flex-1 items-center justify-center border-l border-gray-200 bg-gray-50/30 dark:border-white/10 dark:bg-white/[0.01]">
+      <div className="flex h-full min-w-[300px] flex-1 items-center justify-center" style={{ borderLeft: '1px solid var(--border)' }}>
         <p className="text-sm text-gray-400">Select an item to preview</p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-w-[300px] flex-1 flex-col overflow-hidden border-l border-gray-200 dark:border-white/10">
+    <div className="flex h-full min-w-[300px] flex-1 flex-col overflow-hidden" style={{ borderLeft: '1px solid var(--border)' }}>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {isLoading && (
           <div className="flex flex-col gap-3">

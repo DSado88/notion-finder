@@ -35,7 +35,7 @@ export function Toolbar() {
   }
 
   return (
-    <div className="flex h-9 flex-none items-center gap-1 border-b border-gray-200 bg-gray-50/80 px-3 dark:border-white/10 dark:bg-white/[0.02]">
+    <div className="flex h-9 flex-none items-center gap-1 px-3" style={{ borderBottom: '1px solid var(--border)' }}>
       {/* Breadcrumbs */}
       <nav className="flex min-w-0 flex-1 items-center gap-0.5 text-[12px]">
         {segments.map((seg, i) => (
@@ -47,12 +47,12 @@ export function Toolbar() {
               <button
                 type="button"
                 onClick={() => breadcrumbClick(seg.index)}
-                className="truncate rounded px-1 py-0.5 text-gray-600 hover:bg-gray-200/60 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-gray-100"
+                className="truncate rounded px-1 py-0.5 opacity-50 hover:bg-black/[0.04] hover:opacity-80 dark:hover:bg-white/[0.04]"
               >
                 {seg.label}
               </button>
             ) : (
-              <span className="truncate px-1 py-0.5 font-medium text-gray-900 dark:text-gray-100">
+              <span className="truncate px-1 py-0.5 font-medium">
                 {seg.label}
               </span>
             )}
@@ -61,14 +61,14 @@ export function Toolbar() {
       </nav>
 
       {/* View toggle */}
-      <div className="flex flex-none items-center gap-0.5 rounded border border-gray-200 bg-white p-0.5 dark:border-white/10 dark:bg-white/5">
+      <div className="flex flex-none items-center gap-0.5 rounded p-0.5" style={{ border: '1px solid var(--border)' }}>
         <button
           type="button"
           onClick={() => setViewMode('miller')}
           className={`rounded px-1.5 py-0.5 text-[11px] transition-colors ${
             viewMode === 'miller'
-              ? 'bg-gray-200 text-gray-900 dark:bg-white/15 dark:text-gray-100'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+              ? 'bg-black/[0.06] dark:bg-white/[0.1]'
+              : 'opacity-40 hover:opacity-70'
           }`}
           title="Columns view"
         >
@@ -79,8 +79,8 @@ export function Toolbar() {
           onClick={() => setViewMode('list')}
           className={`rounded px-1.5 py-0.5 text-[11px] transition-colors ${
             viewMode === 'list'
-              ? 'bg-gray-200 text-gray-900 dark:bg-white/15 dark:text-gray-100'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+              ? 'bg-black/[0.06] dark:bg-white/[0.1]'
+              : 'opacity-40 hover:opacity-70'
           }`}
           title="List view"
         >

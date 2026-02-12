@@ -6,6 +6,7 @@ import type { FinderItem } from '@/types/finder';
 interface PagePreview {
   type: 'page';
   title: string;
+  icon: string | null;
   markdown: string;
   url: string;
   lastEditedTime: string;
@@ -72,6 +73,7 @@ export function usePreview(item: FinderItem | null) {
           preview = {
             type: 'page',
             title: json.page.title,
+            icon: json.page.icon?.emoji ?? null,
             markdown: json.markdown,
             url: json.page.url,
             lastEditedTime: json.page.lastEditedTime,

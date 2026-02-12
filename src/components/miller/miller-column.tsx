@@ -196,7 +196,7 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
   const virtualizer = useVirtualizer({
     count: children.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 28,
+    estimateSize: () => 30,
     overscan: 10,
   });
 
@@ -311,21 +311,22 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
     <div
       ref={columnRef}
       tabIndex={0}
-      className="relative flex h-full flex-none flex-col border-r border-gray-200 outline-none focus-within:bg-white dark:border-white/10 dark:focus-within:bg-white/[0.01]"
-      style={{ width: columnWidth }}
+      className="relative flex h-full flex-none flex-col outline-none"
+      style={{ width: columnWidth, borderRight: '1px solid var(--border)' }}
       onDragOver={handleColumnDragOver}
       onDragLeave={handleColumnDragLeave}
       onDrop={handleColumnDrop}
     >
       {/* Column header */}
       <div
-        className={`relative flex h-7 flex-none items-center border-b px-2.5 transition-colors ${
+        className={`relative flex h-7 flex-none items-center px-2.5 transition-colors ${
           isColumnDropTarget
-            ? 'border-blue-400 bg-blue-50 dark:border-blue-500 dark:bg-blue-900/20'
-            : 'border-gray-200 bg-gray-50/80 dark:border-white/10 dark:bg-white/[0.02]'
+            ? 'bg-blue-50 dark:bg-blue-900/20'
+            : ''
         }`}
+        style={{ borderBottom: '1px solid var(--border)' }}
       >
-        <span className="truncate text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+        <span className="truncate text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
           {parentTitle}
         </span>
         <div className="ml-auto flex items-center gap-1">
@@ -333,7 +334,7 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
             <button
               type="button"
               onClick={() => setShowSortMenu((v) => !v)}
-              className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-gray-400 transition-colors hover:bg-gray-200/60 hover:text-gray-600 dark:hover:bg-white/10 dark:hover:text-gray-300"
+              className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] opacity-40 transition-opacity hover:opacity-70"
               title="Change sort order"
             >
               <span>{shortLabel}</span>
@@ -341,7 +342,7 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
             </button>
           )}
           {children.length > 0 && (
-            <span className="text-[10px] tabular-nums text-gray-400">
+            <span className="text-[10px] tabular-nums opacity-40">
               {children.length}
             </span>
           )}

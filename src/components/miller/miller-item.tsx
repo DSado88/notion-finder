@@ -53,16 +53,16 @@ export const MillerItem = memo(
       if (store.dropTargetId === item.id) setDropTarget(null, null);
     }, [item.id, setDropTarget]);
 
-    let className = `flex w-full items-center px-2.5 py-1 text-left text-[13px] leading-5 outline-none transition-colors`;
+    let className = `flex w-full items-center rounded-[3px] px-2 py-[3px] text-left text-[14px] leading-[1.4] outline-none transition-colors`;
 
     if (isDragging) {
       className += ' opacity-40';
     } else if (isDropTarget) {
       className += ' bg-blue-100 ring-1 ring-inset ring-blue-400 dark:bg-blue-900/30 dark:ring-blue-500';
     } else if (isSelected) {
-      className += ' bg-blue-500 text-white';
+      className += ' bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
     } else {
-      className += ' text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-white/5';
+      className += ' hover:bg-black/[0.04] dark:hover:bg-white/[0.04]';
     }
 
     return (
@@ -80,7 +80,7 @@ export const MillerItem = memo(
         {renderIcon(item.icon, item.type)}
         <span className="min-w-0 flex-1 truncate">{item.title || 'Untitled'}</span>
         {item.hasChildren && (
-          <span className={`ml-1 text-xs ${isSelected && !isDropTarget ? 'text-white/70' : 'text-gray-400'}`}>
+          <span className="ml-1 text-xs opacity-40">
             &#x203A;
           </span>
         )}
