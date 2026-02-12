@@ -6,11 +6,15 @@ import { useFinderStore } from '@/stores/finder-store';
 import { useDragStore } from '@/stores/drag-store';
 import { useChildren } from '@/hooks/use-children';
 import { useMove } from '@/hooks/use-move';
+import { useCreate } from '@/hooks/use-create';
+import { useRename } from '@/hooks/use-rename';
+import { useDelete } from '@/hooks/use-delete';
 import { MillerItem } from './miller-item';
 import { ContextMenu } from './context-menu';
 import type { FinderItem, SortField, SortDirection } from '@/types/finder';
 
 const DEFAULT_WIDTH = 240;
+const EMPTY_IDS: string[] = [];
 const SORT_CHOICES: { field: SortField; direction: SortDirection; label: string }[] = [
   { field: 'title', direction: 'asc', label: 'Name (A to Z)' },
   { field: 'title', direction: 'desc', label: 'Name (Z to A)' },
@@ -20,8 +24,8 @@ const SORT_CHOICES: { field: SortField; direction: SortDirection; label: string 
   { field: 'created', direction: 'asc', label: 'Created (Oldest First)' },
 ];
 const SORT_SHORT_LABELS: Record<string, string> = {
-  'title-asc': 'A–Z',
-  'title-desc': 'Z–A',
+  'title-asc': 'A\u2013Z',
+  'title-desc': 'Z\u2013A',
   'lastEdited-desc': 'Newest',
   'lastEdited-asc': 'Oldest',
   'created-desc': 'Newest',
@@ -167,23 +171,41 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
   const columnSortState = useFinderStore((s) => s.columnSort[columnIndex]);
   const setColumnSort = useFinderStore((s) => s.setColumnSort);
   const columnWidth = useFinderStore((s) => s.columnWidths[columnIndex] ?? DEFAULT_WIDTH);
+
+  // Multi-select
+  const multiSelections = useFinderStore((s) => s.multiSelections[columnIndex] ?? EMPTY_IDS);
+  const toggleMultiSelect = useFinderStore((s) => s.toggleMultiSelect);
+  const setMultiSelection = useFinderStore((s) => s.setMultiSelection);
+
+  // Editing
+  const editingItemId = useFinderStore((s) => s.editingItemId);
+  const startEditing = useFinderStore((s) => s.startEditing);
+  const stopEditing = useFinderStore((s) => s.stopEditing);
+
+  // Delete
+  const setPendingDelete = useFinderStore((s) => s.setPendingDelete);
+
   const sortField: SortField = columnSortState?.field ?? 'title';
   const sortDirection: SortDirection = columnSortState?.direction ?? 'asc';
   const { children: rawChildren, isLoading, error } = useChildren(parentId);
 
-  // Drag state — render-cycle values for visual highlighting only
+  // Hooks
+  const { createPage } = useCreate();
+  const { renamePage } = useRename();
+  const { movePage } = useMove();
+
+  // Drag state
   const isColumnDropTarget = useDragStore(
     (s) => s.dropTargetId === parentId && s.dropTargetType === 'column',
   );
-  // Actions + imperative store access used in event handlers
   const setDropTarget = useDragStore((s) => s.setDropTarget);
   const endDrag = useDragStore((s) => s.endDrag);
   const setMoving = useDragStore((s) => s.setMoving);
   const setMoveError = useDragStore((s) => s.setMoveError);
-  const { movePage } = useMove();
 
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; item: FinderItem } | null>(null);
+  const skipNextClickRef = useRef(false);
 
   const children = useMemo(
     () => sortItems(rawChildren, sortField, sortDirection),
@@ -200,11 +222,67 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
     overscan: 10,
   });
 
+  // Auto-scroll to selected item (e.g. after create)
+  useEffect(() => {
+    if (!selectedId) return;
+    const idx = children.findIndex((c) => c.id === selectedId);
+    if (idx !== -1) virtualizer.scrollToIndex(idx, { align: 'auto' });
+  }, [selectedId, children, virtualizer]);
+
+  // Click handler with modifier key support
   const handleClick = useCallback(
-    (item: FinderItem) => {
-      selectItem(columnIndex, item.id);
+    (item: FinderItem, e: React.MouseEvent) => {
+      // Skip synthetic click from Enter keyup after triggering rename
+      if (skipNextClickRef.current) {
+        skipNextClickRef.current = false;
+        return;
+      }
+      if (e.metaKey || e.ctrlKey) {
+        // Cmd/Ctrl+Click: toggle multi-select without navigating
+        toggleMultiSelect(columnIndex, item.id);
+      } else if (e.shiftKey) {
+        // Shift+Click: range-select using sorted children
+        const store = useFinderStore.getState();
+        const anchor = store.selectionAnchor[columnIndex];
+        if (!anchor) {
+          // No anchor — treat as plain click
+          selectItem(columnIndex, item.id);
+          return;
+        }
+        const anchorIdx = children.findIndex((c) => c.id === anchor);
+        const targetIdx = children.findIndex((c) => c.id === item.id);
+        if (anchorIdx === -1 || targetIdx === -1) {
+          selectItem(columnIndex, item.id);
+          return;
+        }
+        const start = Math.min(anchorIdx, targetIdx);
+        const end = Math.max(anchorIdx, targetIdx);
+        const rangeIds = children.slice(start, end + 1).map((c) => c.id);
+        setMultiSelection(columnIndex, rangeIds);
+      } else {
+        // Plain click: navigate (clears multi-select via selectItem)
+        selectItem(columnIndex, item.id);
+      }
     },
-    [columnIndex, selectItem],
+    [columnIndex, children, selectItem, toggleMultiSelect, setMultiSelection],
+  );
+
+  const handleDoubleClick = useCallback(
+    (item: FinderItem) => {
+      if (item.type === 'page') startEditing(item.id);
+    },
+    [startEditing],
+  );
+
+  const handleRenameConfirm = useCallback(
+    async (itemId: string, newTitle: string) => {
+      try {
+        await renamePage(itemId, newTitle);
+      } catch {
+        // Rollback handled by hook; title silently reverts
+      }
+    },
+    [renamePage],
   );
 
   const handleContextMenu = useCallback((e: React.MouseEvent, item: FinderItem) => {
@@ -212,7 +290,45 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
     setCtxMenu({ x: e.clientX, y: e.clientY, item });
   }, []);
 
-  // Execute a move drop — reads store imperatively to avoid stale closure
+  const handleContextRename = useCallback(
+    (item: FinderItem) => {
+      startEditing(item.id);
+    },
+    [startEditing],
+  );
+
+  const handleContextCreate = useCallback(
+    async (ctxParentId: string) => {
+      // Select the parent first so its column opens (or will open via optimisticCreate)
+      selectItem(columnIndex, ctxParentId);
+      // createPage calls optimisticCreate which extends columnPath for leaf parents,
+      // then calls selectItem on the new child in the next column
+      try {
+        await createPage(ctxParentId, columnIndex + 1);
+      } catch {
+        // Create failed — optimisticCreate wasn't called, no cleanup needed
+      }
+    },
+    [columnIndex, selectItem, createPage],
+  );
+
+  const handleContextDelete = useCallback(
+    (item: FinderItem) => {
+      setPendingDelete({ items: [item], parentId });
+    },
+    [parentId, setPendingDelete],
+  );
+
+  // Create page in current column
+  const handleCreateInColumn = useCallback(async () => {
+    try {
+      await createPage(parentId, columnIndex);
+    } catch {
+      // Create failed — no optimistic state to clean up (create is server-first)
+    }
+  }, [parentId, columnIndex, createPage]);
+
+  // Execute a move drop
   const executeDrop = useCallback(
     async (targetId: string) => {
       const store = useDragStore.getState();
@@ -232,15 +348,13 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
     [setMoving, setMoveError, movePage],
   );
 
-  // Column-level drag handlers — read store directly (not render-cycle state)
-  // to avoid stale draggedItem after async React re-render
+  // Column-level drag handlers
   const handleColumnDragOver = useCallback(
     (e: React.DragEvent) => {
       const store = useDragStore.getState();
       if (!store.draggedItem || parentType === 'database') return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      // Only highlight column header as target for cross-parent moves
       if (store.draggedItem.parentId !== parentId) {
         setDropTarget(parentId, 'column');
       }
@@ -262,13 +376,10 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
       e.preventDefault();
       const store = useDragStore.getState();
       if (store.dropTargetType === 'item' && store.dropTargetId) {
-        // Item-level drop: move into that specific item
         executeDrop(store.dropTargetId);
       } else if (store.draggedItem?.parentId !== parentId) {
-        // Column-level drop: move into this column's parent (cross-parent only)
         executeDrop(parentId);
       } else {
-        // Same parent, no item target — no-op
         endDrag();
       }
     },
@@ -281,6 +392,9 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
     if (!el) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle keys while editing
+      if (editingItemId) return;
+
       if (children.length === 0) return;
 
       const currentIndex = selectedId
@@ -297,15 +411,47 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
         const prevIndex = Math.max(currentIndex - 1, 0);
         selectItem(columnIndex, children[prevIndex].id);
         virtualizer.scrollToIndex(prevIndex);
+      } else if ((e.key === 'Enter' || e.key === 'F2') && selectedId) {
+        // Enter/F2: start rename on selected page (if no multi-select active)
+        const store = useFinderStore.getState();
+        const multi = store.multiSelections[columnIndex] ?? [];
+        if (multi.length === 0) {
+          const item = store.itemById[selectedId];
+          if (item?.type === 'page') {
+            e.preventDefault();
+            skipNextClickRef.current = true;
+            startEditing(selectedId);
+          }
+        }
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && !e.metaKey) {
+        // Delete/Backspace: archive selected items
+        const store = useFinderStore.getState();
+        const multi = store.multiSelections[columnIndex] ?? [];
+        if (multi.length > 0) {
+          // Bulk delete from multi-selection
+          const items = multi
+            .map((id) => store.itemById[id])
+            .filter((item): item is FinderItem => item != null && item.type === 'page');
+          if (items.length > 0) {
+            e.preventDefault();
+            setPendingDelete({ items, parentId });
+          }
+        } else if (selectedId) {
+          const item = store.itemById[selectedId];
+          if (item?.type === 'page') {
+            e.preventDefault();
+            setPendingDelete({ items: [item], parentId });
+          }
+        }
       }
     };
 
     el.addEventListener('keydown', handleKeyDown);
     return () => el.removeEventListener('keydown', handleKeyDown);
-  }, [children, selectedId, columnIndex, selectItem, virtualizer]);
+  }, [children, selectedId, columnIndex, selectItem, virtualizer, editingItemId, startEditing, setPendingDelete, parentId]);
 
   const sortKey = `${sortField}-${sortDirection}`;
-  const shortLabel = SORT_SHORT_LABELS[sortKey] ?? 'A–Z';
+  const shortLabel = SORT_SHORT_LABELS[sortKey] ?? 'A\u2013Z';
 
   return (
     <div
@@ -330,6 +476,17 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
           {parentTitle}
         </span>
         <div className="ml-auto flex items-center gap-1">
+          {/* Create page button */}
+          {parentType !== 'database' && (
+            <button
+              type="button"
+              onClick={handleCreateInColumn}
+              className="rounded px-1 py-0.5 text-[11px] opacity-40 transition-opacity hover:opacity-70"
+              title="New page"
+            >
+              +
+            </button>
+          )}
           {children.length > 0 && (
             <button
               type="button"
@@ -394,8 +551,13 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
                   <MillerItem
                     item={item}
                     isSelected={selectedId === item.id}
+                    isMultiSelected={multiSelections.includes(item.id)}
+                    isEditing={editingItemId === item.id}
                     onClick={handleClick}
+                    onDoubleClick={handleDoubleClick}
                     onContextMenu={handleContextMenu}
+                    onRenameConfirm={handleRenameConfirm}
+                    onRenameCancel={stopEditing}
                   />
                 </div>
               );
@@ -414,6 +576,9 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
           y={ctxMenu.y}
           item={ctxMenu.item}
           onClose={() => setCtxMenu(null)}
+          onRename={handleContextRename}
+          onCreate={handleContextCreate}
+          onDelete={handleContextDelete}
         />
       )}
     </div>

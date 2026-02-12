@@ -8,9 +8,16 @@ interface ContextMenuProps {
   y: number;
   item: FinderItem;
   onClose: () => void;
+  onRename: (item: FinderItem) => void;
+  onCreate: (parentId: string) => void;
+  onDelete: (item: FinderItem) => void;
 }
 
-export function ContextMenu({ x, y, item, onClose }: ContextMenuProps) {
+const btnClass =
+  'flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10';
+const dividerClass = 'my-0.5 border-t border-gray-200 dark:border-white/10';
+
+export function ContextMenu({ x, y, item, onClose, onRename, onCreate, onDelete }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,13 +28,14 @@ export function ContextMenu({ x, y, item, onClose }: ContextMenuProps) {
     return () => document.removeEventListener('mousedown', handle);
   }, [onClose]);
 
-  // Keep menu within viewport
   const style: React.CSSProperties = {
     position: 'fixed',
     left: x,
     top: y,
     zIndex: 100,
   };
+
+  const isPage = item.type === 'page';
 
   return (
     <div
@@ -37,35 +45,53 @@ export function ContextMenu({ x, y, item, onClose }: ContextMenuProps) {
     >
       <button
         type="button"
-        onClick={() => {
-          window.open(item.url, '_blank');
-          onClose();
-        }}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10"
+        onClick={() => { window.open(item.url, '_blank'); onClose(); }}
+        className={btnClass}
       >
         Open in Notion
       </button>
       <button
         type="button"
-        onClick={() => {
-          navigator.clipboard.writeText(item.id);
-          onClose();
-        }}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10"
+        onClick={() => { navigator.clipboard.writeText(item.id); onClose(); }}
+        className={btnClass}
       >
         Copy ID
       </button>
-      <div className="my-0.5 border-t border-gray-200 dark:border-white/10" />
       <button
         type="button"
-        onClick={() => {
-          navigator.clipboard.writeText(item.url);
-          onClose();
-        }}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10"
+        onClick={() => { navigator.clipboard.writeText(item.url); onClose(); }}
+        className={btnClass}
       >
         Copy Link
       </button>
+
+      {isPage && (
+        <>
+          <div className={dividerClass} />
+          <button
+            type="button"
+            onClick={() => { onRename(item); onClose(); }}
+            className={btnClass}
+          >
+            Rename
+          </button>
+          <button
+            type="button"
+            onClick={() => { onCreate(item.id); onClose(); }}
+            className={btnClass}
+          >
+            New Page
+          </button>
+          <div className={dividerClass} />
+          <button
+            type="button"
+            onClick={() => { onDelete(item); onClose(); }}
+            className={`${btnClass} !text-red-500 dark:!text-red-400`}
+          >
+            Archive
+          </button>
+        </>
+      )}
     </div>
   );
 }

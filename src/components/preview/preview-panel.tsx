@@ -1,26 +1,117 @@
 'use client';
 
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useFinderStore } from '@/stores/finder-store';
 import { usePreview, type PreviewData } from '@/hooks/use-preview';
+import { useRename } from '@/hooks/use-rename';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-function PagePreviewContent({ data }: { data: Extract<PreviewData, { type: 'page' }> }) {
+function EditableTitle({
+  itemId,
+  data,
+}: {
+  itemId: string;
+  data: Extract<PreviewData, { type: 'page' }>;
+}) {
+  const { renamePage } = useRename();
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(data.title || 'Untitled');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const confirmedRef = useRef(false);
+  const readyRef = useRef(false);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      confirmedRef.current = false;
+      readyRef.current = false;
+      setDraft(data.title || 'Untitled');
+      const rafId = requestAnimationFrame(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.select();
+          readyRef.current = true;
+        }
+      });
+      return () => cancelAnimationFrame(rafId);
+    }
+  }, [isEditing, data.title]);
+
+  const confirm = useCallback(() => {
+    if (!readyRef.current) return;
+    if (confirmedRef.current) return;
+    confirmedRef.current = true;
+    renamePage(itemId, draft);
+    setIsEditing(false);
+  }, [itemId, draft, renamePage]);
+
+  const cancel = useCallback(() => {
+    confirmedRef.current = true;
+    setIsEditing(false);
+  }, []);
+
+  if (isEditing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); confirm(); }
+          else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+        }}
+        onBlur={confirm}
+        className="w-full text-2xl font-bold outline-none ring-1 ring-blue-400 rounded-sm px-0.5 bg-white dark:bg-zinc-800"
+        style={{ color: 'var(--foreground)' }}
+      />
+    );
+  }
+
+  return (
+    <h2
+      className="text-2xl font-bold cursor-text"
+      style={{ color: 'var(--foreground)' }}
+      onDoubleClick={() => setIsEditing(true)}
+    >
+      {data.icon && <span className="mr-2">{data.icon}</span>}
+      {data.title || 'Untitled'}
+    </h2>
+  );
+}
+
+function PagePreviewContent({ itemId, data }: { itemId: string; data: Extract<PreviewData, { type: 'page' }> }) {
+  const setPendingDelete = useFinderStore((s) => s.setPendingDelete);
+  const item = useFinderStore((s) => s.itemById[itemId]);
+
   return (
     <div className="flex flex-col">
       <div className="mb-1 flex items-start justify-between gap-2">
-        <h2 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
-          {data.icon && <span className="mr-2">{data.icon}</span>}
-          {data.title || 'Untitled'}
-        </h2>
-        <a
-          href={data.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-1.5 flex-none text-[11px] opacity-40 hover:opacity-70"
-        >
-          Open in Notion &#x2197;
-        </a>
+        <EditableTitle itemId={itemId} data={data} />
+        <div className="mt-1.5 flex flex-none items-center gap-2">
+          <a
+            href={data.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] opacity-40 hover:opacity-70"
+          >
+            Open in Notion &#x2197;
+          </a>
+          {item?.type === 'page' && (
+            <button
+              type="button"
+              onClick={() =>
+                setPendingDelete({
+                  items: [item],
+                  parentId: item.parentId ?? 'workspace',
+                })
+              }
+              className="text-[11px] text-red-500/60 hover:text-red-500"
+            >
+              Archive
+            </button>
+          )}
+        </div>
       </div>
       <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }}>
         Last edited {new Date(data.lastEditedTime).toLocaleDateString()}
@@ -171,7 +262,7 @@ export function PreviewPanel() {
           </div>
         )}
 
-        {data?.type === 'page' && <PagePreviewContent data={data} />}
+        {data?.type === 'page' && <PagePreviewContent itemId={previewTargetId} data={data} />}
         {data?.type === 'database' && <DatabasePreviewContent data={data} />}
       </div>
     </div>

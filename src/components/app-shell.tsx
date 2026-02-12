@@ -4,6 +4,7 @@ import { Toolbar } from './toolbar';
 import { MillerContainer } from './miller/miller-container';
 import { PreviewPanel } from './preview/preview-panel';
 import { MoveToast } from './miller/move-toast';
+import { DeleteConfirmModal } from './delete-confirm-modal';
 
 export function AppShell() {
   return (
@@ -14,6 +15,7 @@ export function AppShell() {
         <PreviewPanel />
       </div>
       <MoveToast />
+      <DeleteConfirmModal />
     </div>
   );
 }

@@ -732,6 +732,173 @@ export class NotionService {
     await this.ensureWorkspaceIndex();
   }
 
+  // ─── Create / Rename / Archive ───
+
+  /**
+   * Create a new page under the given parent.
+   * For workspace root, uses internal API (public API doesn't support it).
+   */
+  async createPage(
+    parentId: string,
+    title: string = 'Untitled',
+    priority: Priority = 'high',
+  ): Promise<FinderItem> {
+    if (parentId === 'workspace') {
+      return this.createPageAtWorkspaceRoot(title);
+    }
+
+    const page = await notionFetch<NotionPage>('/pages', {
+      method: 'POST',
+      body: {
+        parent: { type: 'page_id', page_id: parentId },
+        properties: {
+          title: { title: [{ text: { content: title } }] },
+        },
+      },
+      priority,
+    });
+
+    const item = toFinderItem(page);
+
+    this.cache.delete(`children:${parentId}`);
+    this.workspaceIndexBuiltAt = 0;
+
+    return item;
+  }
+
+  /**
+   * Create a page at workspace root using Notion's internal API.
+   * Public API doesn't support parent: { workspace: true } for POST /v1/pages.
+   */
+  private async createPageAtWorkspaceRoot(title: string): Promise<FinderItem> {
+    const tokenV2 = process.env.NOTION_TOKEN_V2;
+    const spaceId = process.env.NOTION_SPACE_ID;
+    if (!tokenV2 || !spaceId) {
+      throw new Error('NOTION_TOKEN_V2 and NOTION_SPACE_ID are required for workspace root operations');
+    }
+
+    const newId = crypto.randomUUID();
+
+    const operations: Record<string, unknown>[] = [
+      {
+        id: newId,
+        table: 'block',
+        path: [],
+        command: 'set',
+        args: {
+          type: 'page',
+          id: newId,
+          parent_id: spaceId,
+          parent_table: 'space',
+          alive: true,
+          properties: {
+            title: [[title]],
+          },
+        },
+      },
+      {
+        id: spaceId,
+        table: 'space',
+        path: ['pages'],
+        command: 'listAfter',
+        args: { id: newId },
+      },
+    ];
+
+    const res = await fetch('https://www.notion.so/api/v3/submitTransaction', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `token_v2=${tokenV2}`,
+      },
+      body: JSON.stringify({ operations }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Workspace create failed: HTTP ${res.status} — ${text}`);
+    }
+
+    // Construct FinderItem directly — the public API can't see the page
+    // until the integration is granted access, which doesn't happen automatically.
+    const item: FinderItem = {
+      id: newId,
+      title,
+      type: 'page',
+      parentId: 'workspace',
+      hasChildren: false,
+      icon: null,
+      lastEditedTime: new Date().toISOString(),
+    };
+
+    this.cache.delete('children:workspace');
+    this.workspaceIndexBuiltAt = 0;
+
+    return item;
+  }
+
+  /**
+   * Rename a page by updating its title property.
+   */
+  async renamePage(
+    pageId: string,
+    newTitle: string,
+    priority: Priority = 'high',
+  ): Promise<void> {
+    await notionFetch(`/pages/${pageId}`, {
+      method: 'PATCH',
+      body: {
+        properties: {
+          title: { title: [{ text: { content: newTitle } }] },
+        },
+      },
+      priority,
+    });
+
+    this.cache.delete(`page:${pageId}`);
+    this.workspaceIndexBuiltAt = 0;
+  }
+
+  /**
+   * Archive (soft-delete) a page.
+   */
+  async archivePage(
+    pageId: string,
+    priority: Priority = 'high',
+  ): Promise<void> {
+    await notionFetch(`/pages/${pageId}`, {
+      method: 'PATCH',
+      body: { archived: true },
+      priority,
+    });
+
+    this.cache.delete(`page:${pageId}`);
+    this.workspaceIndexBuiltAt = 0;
+  }
+
+  /**
+   * Batch archive multiple pages sequentially (respects rate limiter).
+   */
+  async batchArchive(
+    pageIds: string[],
+    priority: Priority = 'low',
+  ): Promise<{ succeeded: string[]; failed: { id: string; error: string }[] }> {
+    const succeeded: string[] = [];
+    const failed: { id: string; error: string }[] = [];
+
+    for (const id of pageIds) {
+      try {
+        await this.archivePage(id, priority);
+        succeeded.push(id);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        failed.push({ id, error: msg });
+      }
+    }
+
+    return { succeeded, failed };
+  }
+
   /**
    * Get a single block (for ancestry resolution).
    */
