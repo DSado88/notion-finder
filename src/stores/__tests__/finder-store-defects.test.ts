@@ -688,3 +688,61 @@ describe('Defect CR-7: optimisticMove clears stale selectionAnchor', () => {
     expect(useFinderStore.getState().selectionAnchor[1]).toBe('a');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// Defect CR-9: optimisticMove is idempotent for same-parent moves
+//
+// When a move is rolled back (API failure), optimisticMove is called
+// again with reversed parents. This must not break if the item is
+// already in the target parent's children list (e.g., same-parent move).
+// ═══════════════════════════════════════════════════════════════════
+
+describe('Defect CR-9: optimisticMove rollback does not duplicate item', () => {
+  it('should handle move + rollback without duplicating the item', () => {
+    const parent = makeItem({ id: 'p', hasChildren: true });
+    const target = makeItem({ id: 't', hasChildren: true });
+    const child = makeItem({ id: 'c', parentId: 'p' });
+
+    seedStore(
+      [parent, target, child],
+      { workspace: [parent, target], p: [child], t: [] },
+    );
+
+    // Move child from p to t
+    useFinderStore.getState().optimisticMove('c', 'p', 't');
+
+    const state1 = useFinderStore.getState();
+    expect(state1.childrenByParentId['p'].map((i) => i.id)).toEqual([]);
+    expect(state1.childrenByParentId['t'].map((i) => i.id)).toEqual(['c']);
+
+    // Rollback: move child back from t to p
+    useFinderStore.getState().optimisticMove('c', 't', 'p');
+
+    const state2 = useFinderStore.getState();
+    expect(state2.childrenByParentId['t'].map((i) => i.id)).toEqual([]);
+    expect(state2.childrenByParentId['p'].map((i) => i.id)).toEqual(['c']);
+    // No duplicates
+    expect(state2.childrenByParentId['p'].length).toBe(1);
+  });
+
+  it('should allow concurrent moves of different items', () => {
+    const parent = makeItem({ id: 'p', hasChildren: true });
+    const target = makeItem({ id: 't', hasChildren: true });
+    const a = makeItem({ id: 'a', parentId: 'p' });
+    const b = makeItem({ id: 'b', parentId: 'p' });
+
+    seedStore(
+      [parent, target, a, b],
+      { workspace: [parent, target], p: [a, b], t: [] },
+    );
+
+    // Move a from p to t
+    useFinderStore.getState().optimisticMove('a', 'p', 't');
+    // Move b from p to t (while a's API call is still in-flight)
+    useFinderStore.getState().optimisticMove('b', 'p', 't');
+
+    const state = useFinderStore.getState();
+    expect(state.childrenByParentId['p'].map((i) => i.id)).toEqual([]);
+    expect(state.childrenByParentId['t'].map((i) => i.id)).toEqual(['a', 'b']);
+  });
+});

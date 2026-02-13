@@ -15,6 +15,7 @@ import type {
   NotionDatabase,
   NotionBlock,
   NotionBlockChildrenResponse,
+  NotionRichText,
   FinderItem,
   NotionParent,
   NotionIcon,
@@ -905,6 +906,8 @@ export class NotionService {
           properties: {
             title: [[title]],
           },
+          // Grant space-level editor access so token_v2 user can rename/edit later
+          permissions: [{ role: 'editor', type: 'space_permission' }],
         },
       },
       {
@@ -930,20 +933,42 @@ export class NotionService {
       throw new Error(`Workspace create failed: HTTP ${res.status} — ${text}`);
     }
 
-    // Construct FinderItem directly — the public API can't see the page
-    // until the integration is granted access, which doesn't happen automatically.
+    // The internal API creates the page instantly, but the public API
+    // can't see it until the integration is granted access (which doesn't
+    // happen automatically for workspace-root pages). Pre-cache a synthetic
+    // NotionPage so getPage() returns from cache for preview/rename.
     const now = new Date().toISOString();
+    const syntheticPage: NotionPage = {
+      object: 'page',
+      id: newId,
+      created_time: now,
+      last_edited_time: now,
+      archived: false,
+      in_trash: false,
+      parent: { type: 'workspace', workspace: true },
+      icon: null,
+      properties: {
+        title: {
+          id: 'title',
+          type: 'title',
+          title: [{ type: 'text', plain_text: title, href: null }],
+        },
+      },
+      url: `https://www.notion.so/${newId.replace(/-/g, '')}`,
+    };
+    this.setCache(`page:${newId}`, { page: syntheticPage, blocks: [] });
+
     const item: FinderItem = {
       id: newId,
       title,
       type: 'page',
-      parentId: 'workspace',
+      parentId: null,
       hasChildren: false,
       icon: null,
       createdTime: now,
       lastEditedTime: now,
       parentType: 'workspace',
-      url: `https://www.notion.so/${newId.replace(/-/g, '')}`,
+      url: syntheticPage.url,
     };
 
     this.cache.delete('children:workspace');
@@ -960,18 +985,74 @@ export class NotionService {
     newTitle: string,
     priority: Priority = 'high',
   ): Promise<void> {
-    await notionFetch(`/pages/${pageId}`, {
-      method: 'PATCH',
-      body: {
-        properties: {
-          title: { title: [{ text: { content: newTitle } }] },
+    try {
+      await notionFetch(`/pages/${pageId}`, {
+        method: 'PATCH',
+        body: {
+          properties: {
+            title: { title: [{ text: { content: newTitle } }] },
+          },
         },
+        priority,
+      });
+    } catch {
+      // Public API may not see workspace-root pages created via internal API.
+      // Fall back to submitTransaction.
+      await this.renameViaInternalApi(pageId, newTitle);
+    }
+
+    // Update the page cache if it exists (e.g. synthetic pages from create)
+    const pageCacheKey = `page:${pageId}`;
+    const cached = this.getCached<{ page: NotionPage; blocks: NotionBlock[] }>(
+      pageCacheKey,
+      this.CONTENT_TTL,
+    );
+    if (cached) {
+      const titleProp = cached.page.properties?.title;
+      if (titleProp && 'title' in titleProp && Array.isArray(titleProp.title)) {
+        (titleProp.title as NotionRichText[])[0] = {
+          type: 'text',
+          plain_text: newTitle,
+          href: null,
+        };
+      }
+      cached.page.last_edited_time = new Date().toISOString();
+      this.setCache(pageCacheKey, cached);
+    } else {
+      this.cache.delete(pageCacheKey);
+    }
+    this.patchIndexRename(pageId, newTitle);
+  }
+
+  private async renameViaInternalApi(pageId: string, newTitle: string): Promise<void> {
+    const tokenV2 = process.env.NOTION_TOKEN_V2;
+    if (!tokenV2) {
+      throw new Error('NOTION_TOKEN_V2 required for internal rename fallback');
+    }
+
+    const res = await fetch('https://www.notion.so/api/v3/submitTransaction', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `token_v2=${tokenV2}`,
       },
-      priority,
+      body: JSON.stringify({
+        operations: [
+          {
+            id: pageId,
+            table: 'block',
+            path: ['properties', 'title'],
+            command: 'set',
+            args: [[newTitle]],
+          },
+        ],
+      }),
     });
 
-    this.cache.delete(`page:${pageId}`);
-    this.patchIndexRename(pageId, newTitle);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Internal rename failed: HTTP ${res.status} — ${text}`);
+    }
   }
 
   /**
@@ -1025,5 +1106,7 @@ export class NotionService {
   }
 }
 
-// Module-level singleton
-export const notionService = new NotionService();
+// Singleton persisted via globalThis so Turbopack/HMR doesn't create
+// separate instances per API route in dev mode.
+const globalForNotion = globalThis as unknown as { _notionService?: NotionService };
+export const notionService = globalForNotion._notionService ??= new NotionService();

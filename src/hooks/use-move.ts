@@ -8,20 +8,28 @@ export function useMove() {
 
   const movePage = useCallback(
     async (pageId: string, newParentId: string, oldParentId: string | null) => {
-      const res = await fetch(`/api/notion/move/${pageId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ new_parent_id: newParentId }),
-      });
+      const resolvedOldParent = oldParentId ?? 'workspace';
 
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Move failed: HTTP ${res.status}`);
+      // Optimistic-first: update the UI immediately so the item moves instantly.
+      // Rollback on API failure.
+      optimisticMove(pageId, resolvedOldParent, newParentId);
+
+      try {
+        const res = await fetch(`/api/notion/move/${pageId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ new_parent_id: newParentId }),
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `Move failed: HTTP ${res.status}`);
+        }
+      } catch (err) {
+        // Rollback: move the item back to its original parent
+        optimisticMove(pageId, newParentId, resolvedOldParent);
+        throw err;
       }
-
-      // Optimistically update the client-side cache instead of re-fetching
-      // (server re-fetch returns stale data because Notion's search index is eventually consistent)
-      optimisticMove(pageId, oldParentId ?? 'workspace', newParentId);
     },
     [optimisticMove],
   );

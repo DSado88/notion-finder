@@ -201,7 +201,6 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
   );
   const setDropTarget = useDragStore((s) => s.setDropTarget);
   const endDrag = useDragStore((s) => s.endDrag);
-  const setMoving = useDragStore((s) => s.setMoving);
   const setMoveError = useDragStore((s) => s.setMoveError);
 
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -342,18 +341,15 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
       const store = useDragStore.getState();
       const item = store.draggedItem;
       store.endDrag();
-      if (!item || store.isMoving) return;
+      if (!item) return;
 
-      setMoving(true);
       try {
         await movePage(item.id, targetId, item.parentId);
       } catch (err) {
         setMoveError(err instanceof Error ? err.message : 'Move failed');
-      } finally {
-        setMoving(false);
       }
     },
-    [setMoving, setMoveError, movePage],
+    [setMoveError, movePage],
   );
 
   // Column-level drag handlers
