@@ -11,7 +11,7 @@ export function useCreate() {
 
   const createPage = useCallback(
     async (parentId: string, columnIndex: number) => {
-      const res = await fetch('/api/notion/create', {
+      const res = await fetch('/api/workspace/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ parent_id: parentId, title: 'Untitled' }),

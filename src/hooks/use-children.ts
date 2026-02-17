@@ -21,7 +21,7 @@ export function useChildren(parentId: string) {
     setIsLoading(true);
     setError(null);
 
-    fetch(`/api/notion/children/${parentId}`)
+    fetch(`/api/workspace/children/${parentId}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();

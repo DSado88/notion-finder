@@ -19,7 +19,7 @@ export function useRename() {
       stopEditing();
 
       try {
-        const res = await fetch(`/api/notion/rename/${pageId}`, {
+        const res = await fetch(`/api/workspace/rename/${pageId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title }),

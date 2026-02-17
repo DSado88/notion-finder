@@ -28,7 +28,7 @@ export function useDelete() {
       invalidatePreview(pageId);
 
       try {
-        const res = await fetch(`/api/notion/archive/${pageId}`, {
+        const res = await fetch(`/api/workspace/archive/${pageId}`, {
           method: 'POST',
         });
 
@@ -60,7 +60,7 @@ export function useDelete() {
       batchDeleteWithPreviewCleanup(pageIds, parentId);
 
       try {
-        const res = await fetch('/api/notion/batch-archive', {
+        const res = await fetch('/api/workspace/batch-archive', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ page_ids: pageIds }),

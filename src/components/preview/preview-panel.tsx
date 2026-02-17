@@ -1,14 +1,17 @@
 'use client';
 
 import { memo, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { useFinderStore } from '@/stores/finder-store';
 import { usePreview, type PreviewData } from '@/hooks/use-preview';
 import { useRename } from '@/hooks/use-rename';
+import { useBackend } from '@/hooks/use-backend';
 import { InlineEdit } from '@/components/inline-edit';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 
-const REMARK_PLUGINS = [remarkGfm];
+const LazyPlateEditor = dynamic(
+  () => import('@/components/editor/plate-editor').then((m) => m.PlateEditor),
+  { ssr: false },
+);
 
 function EditableTitle({
   itemId,
@@ -58,21 +61,40 @@ function EditableTitle({
 const PagePreviewContent = memo(function PagePreviewContent({ itemId, data }: { itemId: string; data: Extract<PreviewData, { type: 'page' }> }) {
   const setPendingDelete = useFinderStore((s) => s.setPendingDelete);
   const item = useFinderStore((s) => s.itemById[itemId]);
+  const { capabilities } = useBackend();
+  const canEdit = capabilities?.canEdit ?? false;
+
+  const handleSave = useCallback(
+    async (markdown: string) => {
+      const res = await fetch(`/api/workspace/content/${itemId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ markdown }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Save failed: HTTP ${res.status}`);
+      }
+    },
+    [itemId],
+  );
 
   return (
     <div className="flex flex-col">
       <div className="mb-1 flex items-start justify-between gap-2">
         <EditableTitle itemId={itemId} data={data} />
         <div className="mt-1.5 flex flex-none items-center gap-2">
-          <a
-            href={data.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] opacity-40 hover:opacity-70"
-          >
-            Open in Notion &#x2197;
-          </a>
-          {item?.type === 'page' && (
+          {data.url && (
+            <a
+              href={data.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] opacity-40 hover:opacity-70"
+            >
+              Open &#x2197;
+            </a>
+          )}
+          {item?.type === 'page' && capabilities?.canDelete !== false && (
             <button
               type="button"
               onClick={() =>
@@ -106,11 +128,12 @@ const PagePreviewContent = memo(function PagePreviewContent({ itemId, data }: { 
         </div>
       )}
       {data.markdown ? (
-        <div className="prose prose-base dark:prose-invert max-w-none leading-relaxed prose-headings:font-semibold prose-p:my-1 prose-li:my-0">
-          <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>
-            {data.markdown}
-          </ReactMarkdown>
-        </div>
+        <LazyPlateEditor
+          itemId={itemId}
+          initialMarkdown={data.markdown}
+          readOnly={!canEdit}
+          onSave={canEdit ? handleSave : undefined}
+        />
       ) : (
         <p className="text-sm italic" style={{ color: 'var(--muted)' }}>Empty page</p>
       )}

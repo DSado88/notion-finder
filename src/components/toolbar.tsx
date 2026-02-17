@@ -3,6 +3,8 @@
 import { useShallow } from 'zustand/react/shallow';
 import { useFinderStore } from '@/stores/finder-store';
 import { CookieStatus } from './cookie-status';
+import { useBackend } from '@/hooks/use-backend';
+import { useSync } from '@/hooks/use-sync';
 
 export function Toolbar() {
   const columnPath = useFinderStore(useShallow((s) => s.columnPath));
@@ -11,6 +13,9 @@ export function Toolbar() {
   const breadcrumbClick = useFinderStore((s) => s.breadcrumbClick);
   const viewMode = useFinderStore((s) => s.viewMode);
   const setViewMode = useFinderStore((s) => s.setViewMode);
+  const { name: backendName, capabilities } = useBackend();
+  const canSync = capabilities?.canSync ?? false;
+  const { status: syncStatus, isSyncing, pull, push } = useSync(canSync);
   // Build breadcrumb segments from columnPath + selections
   const segments: { label: string; index: number }[] = columnPath.map(
     (parentId, i) => {
@@ -60,6 +65,55 @@ export function Toolbar() {
           </span>
         ))}
       </nav>
+
+      {backendName && (
+        <div
+          className="flex flex-none items-center gap-1.5 rounded px-2 py-0.5 text-[11px]"
+          style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
+          title={capabilities ? `Edit: ${capabilities.canEdit ? 'yes' : 'no'} | Create: ${capabilities.canCreate ? 'yes' : 'no'} | Delete: ${capabilities.canDelete ? 'yes' : 'no'} | Move: ${capabilities.canMove ? 'yes' : 'no'} | Search: ${capabilities.canSearch ? 'yes' : 'no'}` : undefined}
+        >
+          <span className="opacity-60">{backendName}</span>
+          {capabilities?.canEdit && (
+            <span className="rounded bg-green-500/15 px-1 text-[10px] text-green-600 dark:text-green-400">
+              editable
+            </span>
+          )}
+          {capabilities && !capabilities.canEdit && (
+            <span className="rounded bg-yellow-500/15 px-1 text-[10px] text-yellow-600 dark:text-yellow-400">
+              read-only
+            </span>
+          )}
+        </div>
+      )}
+
+      {canSync && syncStatus?.hasRemote && (
+        <div className="flex flex-none items-center gap-0.5 rounded p-0.5 text-[11px]" style={{ border: '1px solid var(--border)' }}>
+          <button
+            type="button"
+            onClick={pull}
+            disabled={isSyncing}
+            className="rounded px-1.5 py-0.5 opacity-60 hover:bg-black/[0.04] hover:opacity-100 disabled:opacity-30 dark:hover:bg-white/[0.04]"
+            title={`Pull from remote${syncStatus.behind > 0 ? ` (${syncStatus.behind} behind)` : ''}`}
+          >
+            {syncStatus.behind > 0 && (
+              <span className="mr-0.5 text-[10px] text-blue-500">{syncStatus.behind}</span>
+            )}
+            &#x2193;
+          </button>
+          <button
+            type="button"
+            onClick={push}
+            disabled={isSyncing}
+            className="rounded px-1.5 py-0.5 opacity-60 hover:bg-black/[0.04] hover:opacity-100 disabled:opacity-30 dark:hover:bg-white/[0.04]"
+            title={`Push to remote${syncStatus.ahead > 0 ? ` (${syncStatus.ahead} ahead)` : ''}`}
+          >
+            {syncStatus.ahead > 0 && (
+              <span className="mr-0.5 text-[10px] text-green-500">{syncStatus.ahead}</span>
+            )}
+            &#x2191;
+          </button>
+        </div>
+      )}
 
       <CookieStatus />
 

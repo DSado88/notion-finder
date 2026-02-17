@@ -15,7 +15,7 @@ export function useMove() {
       optimisticMove(pageId, resolvedOldParent, newParentId);
 
       try {
-        const res = await fetch(`/api/notion/move/${pageId}`, {
+        const res = await fetch(`/api/workspace/move/${pageId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ new_parent_id: newParentId }),

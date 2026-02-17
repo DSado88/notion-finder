@@ -47,7 +47,7 @@ export function prefetchPreview(item: FinderItem | null) {
 
   const endpoint = item.type === 'database'
     ? `/api/notion/database/${item.id}`
-    : `/api/notion/page/${item.id}`;
+    : `/api/workspace/page/${item.id}`;
 
   fetch(endpoint)
     .then((res) => {
@@ -105,7 +105,7 @@ export function usePreview(item: FinderItem | null) {
 
     const endpoint = item.type === 'database'
       ? `/api/notion/database/${item.id}`
-      : `/api/notion/page/${item.id}`;
+      : `/api/workspace/page/${item.id}`;
 
     fetch(endpoint)
       .then((res) => {

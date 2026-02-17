@@ -1,9 +1,8 @@
 /**
  * Source-level verification tests for preview-panel performance optimizations.
  *
- * These verify that the remarkPlugins array is a module-level constant
- * (not re-created inside the component) and that PagePreviewContent
- * is wrapped in React.memo.
+ * These verify that the PlateEditor is lazy-loaded and that
+ * PagePreviewContent is wrapped in React.memo.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -16,19 +15,13 @@ const source = readFileSync(
 );
 
 describe('preview-panel performance optimizations', () => {
-  it('should define REMARK_PLUGINS at module level (not inside a component)', () => {
-    // The constant should appear before any function definition
-    const constIndex = source.indexOf('const REMARK_PLUGINS');
-    const firstFunctionIndex = source.indexOf('function ');
-    expect(constIndex).toBeGreaterThan(-1);
-    expect(constIndex).toBeLessThan(firstFunctionIndex);
+  it('should lazy-load PlateEditor with next/dynamic (no SSR)', () => {
+    expect(source).toMatch(/dynamic\(/);
+    expect(source).toMatch(/ssr:\s*false/);
   });
 
-  it('should use REMARK_PLUGINS (not inline [remarkGfm]) in ReactMarkdown', () => {
-    // Should NOT have inline array creation
-    expect(source).not.toMatch(/remarkPlugins=\{\[remarkGfm\]\}/);
-    // Should use the stable constant
-    expect(source).toMatch(/remarkPlugins=\{REMARK_PLUGINS\}/);
+  it('should use LazyPlateEditor (not inline import) in render', () => {
+    expect(source).toMatch(/<LazyPlateEditor/);
   });
 
   it('should wrap PagePreviewContent in React.memo', () => {
