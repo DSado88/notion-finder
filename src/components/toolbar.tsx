@@ -135,9 +135,14 @@ export function Toolbar() {
             <button
               type="button"
               onClick={() => {
-                createPr().then((result) => {
-                  if (result?.url) window.open(result.url, '_blank');
-                });
+                createPr()
+                  .then((result) => {
+                    if (result?.url) window.open(result.url, '_blank');
+                  })
+                  .catch((err) => {
+                    console.error('Create PR failed:', err);
+                    alert(err.message || 'Failed to create PR');
+                  });
               }}
               disabled={isCreatingPr}
               className="rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-600 hover:bg-green-500/25 disabled:opacity-30 dark:text-green-400"

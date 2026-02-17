@@ -875,7 +875,19 @@ export class GitHubAdapter implements BackendAdapter {
     }
   }
 
-  getBranchStatus(): BranchStatus {
+  async getBranchStatus(): Promise<BranchStatus> {
+    // Recover working branch after server restart / HMR singleton loss
+    if (!this.workingBranch) {
+      const existing = await this.findExistingSessionBranch();
+      if (existing) {
+        this.workingBranch = existing;
+        this.invalidateTree();
+      }
+    }
+    // Always compute from GitHub so the status is accurate
+    if (this.workingBranch) {
+      await this.computeChangedFiles();
+    }
     return {
       baseBranch: this.baseBranch,
       workingBranch: this.workingBranch,

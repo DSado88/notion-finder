@@ -97,7 +97,7 @@ export interface BackendAdapter {
   syncCommitAll?(message: string): Promise<void>;
 
   // Branch workflow (optional — only git-github)
-  getBranchStatus?(): BranchStatus;
+  getBranchStatus?(): Promise<BranchStatus>;
   ensureWorkingBranch?(): Promise<string>;
   createPullRequest?(title?: string): Promise<{ url: string; number: number }>;
   discardWorkingBranch?(): Promise<void>;

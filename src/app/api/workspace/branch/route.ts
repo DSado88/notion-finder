@@ -14,7 +14,7 @@ export async function GET() {
         { status: 501 },
       );
     }
-    return NextResponse.json(adapter.getBranchStatus());
+    return NextResponse.json(await adapter.getBranchStatus());
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
