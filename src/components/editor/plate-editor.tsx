@@ -18,7 +18,9 @@ import { ListPlugin } from '@platejs/list/react';
 import { IndentPlugin } from '@platejs/indent/react';
 import { CodeBlockPlugin } from '@platejs/code-block/react';
 import { LinkPlugin } from '@platejs/link/react';
+import { TablePlugin } from '@platejs/table/react';
 import { MarkdownPlugin, deserializeMd, serializeMd } from '@platejs/markdown';
+import remarkGfm from 'remark-gfm';
 import { SlashPlugin, SlashInputPlugin } from '@platejs/slash-command/react';
 import { KEYS } from 'platejs';
 import { SlashInputElement } from './slash-node';
@@ -54,7 +56,12 @@ const PLUGINS = [
   ListPlugin,
   CodeBlockPlugin,
   LinkPlugin,
-  MarkdownPlugin,
+  TablePlugin,
+  MarkdownPlugin.configure({
+    options: {
+      remarkPlugins: [remarkGfm],
+    },
+  }),
   SlashPlugin.configure({
     options: {
       trigger: '/',
