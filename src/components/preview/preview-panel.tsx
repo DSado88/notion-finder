@@ -134,6 +134,7 @@ const PagePreviewContent = memo(function PagePreviewContent({ itemId, data }: { 
       )}
       {data.markdown ? (
         <LazyPlateEditor
+          key={itemId}
           itemId={itemId}
           initialMarkdown={data.markdown}
           readOnly={!canEdit}

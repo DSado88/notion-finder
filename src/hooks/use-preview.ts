@@ -102,6 +102,7 @@ export function usePreview(item: FinderItem | null) {
     let cancelled = false;
     setIsLoading(true);
     setError(null);
+    setData(null);
 
     const endpoint = item.type === 'database'
       ? `/api/notion/database/${item.id}`
