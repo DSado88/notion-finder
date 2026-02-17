@@ -1,5 +1,5 @@
 import { Octokit } from '@octokit/rest';
-import type { BackendAdapter, BackendCapabilities, ContentData } from './types';
+import type { BackendAdapter, BackendCapabilities, BranchStatus, ContentData } from './types';
 import { AdapterError } from './types';
 import type { FinderItem, BatchMoveRequest, BatchMoveResult } from '@/types/finder';
 
@@ -66,12 +66,23 @@ export class GitHubAdapter implements BackendAdapter {
     canMove: true,
     canSearch: false,
     canSync: false,
+    canBranch: true,
   };
 
   private octokit: Octokit;
   private owner: string;
   private repo: string;
-  private branch: string;
+  private baseBranch: string;
+
+  // Working branch state
+  private workingBranch: string | null = null;
+  private changedFiles = new Set<string>();
+  private branchCreationPromise: Promise<string> | null = null;
+
+  /** The branch all reads and writes target. Working branch if active, base otherwise. */
+  private get activeBranch(): string {
+    return this.workingBranch ?? this.baseBranch;
+  }
 
   // Full tree cache — fetched once, invalidated on writes
   private treeCache: TreeEntry[] | null = null;
@@ -82,7 +93,7 @@ export class GitHubAdapter implements BackendAdapter {
     this.octokit = new Octokit({ auth: token });
     this.owner = owner;
     this.repo = repo;
-    this.branch = process.env.GITHUB_BRANCH || 'main';
+    this.baseBranch = process.env.GITHUB_BRANCH || 'main';
   }
 
   // ─── Tree cache ───
@@ -94,7 +105,7 @@ export class GitHubAdapter implements BackendAdapter {
     const refData = await this.octokit.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.activeBranch}`,
     });
     this.headSha = refData.data.object.sha;
 
@@ -133,6 +144,7 @@ export class GitHubAdapter implements BackendAdapter {
   private invalidateTree(): void {
     this.treeCache = null;
     this.headSha = null;
+    this.shaCache.clear();
   }
 
   /** Get child entries of a directory from the cached tree. */
@@ -202,7 +214,7 @@ export class GitHubAdapter implements BackendAdapter {
       lastEditedTime: new Date().toISOString(),
       parentType: parentPath ? 'page_id' : 'workspace',
       parentId: parentPath || null,
-      url: `https://github.com/${this.owner}/${this.repo}/blob/${this.branch}/${entry.path}`,
+      url: `https://github.com/${this.owner}/${this.repo}/blob/${this.activeBranch}/${entry.path}`,
     };
   }
 
@@ -246,7 +258,7 @@ export class GitHubAdapter implements BackendAdapter {
       return {
         markdown: '',
         title: basename(itemId),
-        url: `https://github.com/${this.owner}/${this.repo}/tree/${this.branch}/${itemId}`,
+        url: `https://github.com/${this.owner}/${this.repo}/tree/${this.activeBranch}/${itemId}`,
         lastEditedTime: new Date().toISOString(),
       };
     }
@@ -256,7 +268,7 @@ export class GitHubAdapter implements BackendAdapter {
         owner: this.owner,
         repo: this.repo,
         path: itemId,
-        ref: this.branch,
+        ref: this.activeBranch,
       });
 
       const data = response.data;
@@ -274,7 +286,7 @@ export class GitHubAdapter implements BackendAdapter {
       return {
         markdown: body,
         title,
-        url: `https://github.com/${this.owner}/${this.repo}/blob/${this.branch}/${itemId}`,
+        url: `https://github.com/${this.owner}/${this.repo}/blob/${this.activeBranch}/${itemId}`,
         lastEditedTime: new Date().toISOString(),
       };
     } catch (err) {
@@ -288,24 +300,29 @@ export class GitHubAdapter implements BackendAdapter {
   }
 
   async saveContent(itemId: string, markdown: string): Promise<void> {
+    await this.ensureWorkingBranch();
     // Preserve frontmatter: fetch existing content first
     let frontmatter = '';
-    try {
-      const response = await this.octokit.rest.repos.getContent({
-        owner: this.owner,
-        repo: this.repo,
-        path: itemId,
-        ref: this.branch,
-      });
+    const freshSha = await this.fetchFileSha(itemId);
 
-      const data = response.data;
-      if (!Array.isArray(data) && data.type === 'file' && 'content' in data) {
-        this.shaCache.set(itemId, data.sha);
-        const raw = Buffer.from(data.content, 'base64').toString('utf-8');
-        ({ frontmatter } = splitFrontmatter(raw));
+    if (freshSha) {
+      try {
+        const response = await this.octokit.rest.repos.getContent({
+          owner: this.owner,
+          repo: this.repo,
+          path: itemId,
+          ref: this.activeBranch,
+        });
+
+        const data = response.data;
+        if (!Array.isArray(data) && data.type === 'file' && 'content' in data) {
+          this.shaCache.set(itemId, data.sha);
+          const raw = Buffer.from(data.content, 'base64').toString('utf-8');
+          ({ frontmatter } = splitFrontmatter(raw));
+        }
+      } catch {
+        // File may not exist yet
       }
-    } catch {
-      // File may not exist yet
     }
 
     const sha = this.shaCache.get(itemId);
@@ -316,36 +333,66 @@ export class GitHubAdapter implements BackendAdapter {
     const fullContent = frontmatter + markdown;
     const contentBase64 = Buffer.from(fullContent, 'utf-8').toString('base64');
 
+    // Try up to 2 times — retry once with a fresh SHA on conflict
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const currentSha = this.shaCache.get(itemId) ?? sha;
+      try {
+        const result = await this.octokit.rest.repos.createOrUpdateFileContents({
+          owner: this.owner,
+          repo: this.repo,
+          path: itemId,
+          message: `Update ${itemId}`,
+          content: contentBase64,
+          sha: currentSha,
+          branch: this.activeBranch,
+        });
+
+        // Update SHA cache with new blob SHA
+        if (result.data.content?.sha) {
+          this.shaCache.set(itemId, result.data.content.sha);
+        }
+        this.changedFiles.add(itemId);
+        this.invalidateTree();
+        return;
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        if (status === 409 && attempt === 0) {
+          // Re-fetch SHA and retry once
+          const retrySha = await this.fetchFileSha(itemId);
+          if (retrySha) {
+            this.shaCache.set(itemId, retrySha);
+            continue;
+          }
+        }
+        if (status === 409) {
+          this.shaCache.delete(itemId);
+          throw new AdapterError('CONFLICT', 'File was modified on GitHub. Please reload and try again.');
+        }
+        throw err;
+      }
+    }
+  }
+
+  private async fetchFileSha(itemId: string): Promise<string | null> {
     try {
-      const result = await this.octokit.rest.repos.createOrUpdateFileContents({
+      const response = await this.octokit.rest.repos.getContent({
         owner: this.owner,
         repo: this.repo,
         path: itemId,
-        message: `Update ${itemId}`,
-        content: contentBase64,
-        sha,
-        branch: this.branch,
+        ref: this.activeBranch,
       });
-
-      // Update SHA cache with new blob SHA
-      if (result.data.content?.sha) {
-        this.shaCache.set(itemId, result.data.content.sha);
+      const data = response.data;
+      if (!Array.isArray(data) && data.type === 'file') {
+        return data.sha;
       }
-    } catch (err) {
-      const status = (err as { status?: number }).status;
-      if (status === 409) {
-        this.shaCache.delete(itemId);
-        throw new AdapterError('CONFLICT', 'File was modified on GitHub. Please reload and try again.');
-      }
-      throw err;
-    }
-
-    this.invalidateTree();
+    } catch { /* file may not exist */ }
+    return null;
   }
 
   // ─── CRUD ───
 
   async createPage(parentId: string, title: string): Promise<FinderItem> {
+    await this.ensureWorkingBranch();
     const filename = `${slugify(title)}${MD_EXT}`;
     const filePath = parentId ? `${parentId}/${filename}` : filename;
     const content = `# ${title}\n\n`;
@@ -357,13 +404,14 @@ export class GitHubAdapter implements BackendAdapter {
       path: filePath,
       message: `Create ${filePath}`,
       content: contentBase64,
-      branch: this.branch,
+      branch: this.activeBranch,
     });
 
     if (result.data.content?.sha) {
       this.shaCache.set(filePath, result.data.content.sha);
     }
 
+    this.changedFiles.add(filePath);
     this.invalidateTree();
 
     return {
@@ -376,11 +424,12 @@ export class GitHubAdapter implements BackendAdapter {
       lastEditedTime: new Date().toISOString(),
       parentType: parentId ? 'page_id' : 'workspace',
       parentId: parentId || null,
-      url: `https://github.com/${this.owner}/${this.repo}/blob/${this.branch}/${filePath}`,
+      url: `https://github.com/${this.owner}/${this.repo}/blob/${this.activeBranch}/${filePath}`,
     };
   }
 
   async renamePage(itemId: string, newTitle: string): Promise<void> {
+    await this.ensureWorkingBranch();
     // Rename = move to same directory with new filename
     const parent = dirname(itemId);
     const isDir = this.treeCache?.some((e) => e.path === itemId && e.type === 'tree');
@@ -397,12 +446,15 @@ export class GitHubAdapter implements BackendAdapter {
 
       // Read current content, update heading, write to new path, delete old
       await this.moveFileWithContentUpdate(itemId, newPath, newTitle);
+      this.changedFiles.add(itemId);
+      this.changedFiles.add(newPath);
     }
 
     this.invalidateTree();
   }
 
   async archivePage(itemId: string): Promise<void> {
+    await this.ensureWorkingBranch();
     await this.ensureTree();
     const isDir = this.treeCache!.some((e) => e.path === itemId && e.type === 'tree');
 
@@ -417,7 +469,7 @@ export class GitHubAdapter implements BackendAdapter {
           owner: this.owner,
           repo: this.repo,
           path: itemId,
-          ref: this.branch,
+          ref: this.activeBranch,
         });
         const data = response.data;
         if (!Array.isArray(data) && data.type === 'file') {
@@ -436,16 +488,18 @@ export class GitHubAdapter implements BackendAdapter {
         path: itemId,
         message: `Delete ${itemId}`,
         sha: fileSha,
-        branch: this.branch,
+        branch: this.activeBranch,
       });
 
       this.shaCache.delete(itemId);
     }
 
+    this.changedFiles.add(itemId);
     this.invalidateTree();
   }
 
   async movePage(itemId: string, newParentId: string): Promise<void> {
+    await this.ensureWorkingBranch();
     const name = basename(itemId);
     const newPath = newParentId ? `${newParentId}/${name}` : name;
     if (newPath === itemId) return;
@@ -459,6 +513,8 @@ export class GitHubAdapter implements BackendAdapter {
       await this.moveFileSimple(itemId, newPath);
     }
 
+    this.changedFiles.add(itemId);
+    this.changedFiles.add(newPath);
     this.invalidateTree();
   }
 
@@ -471,7 +527,7 @@ export class GitHubAdapter implements BackendAdapter {
       owner: this.owner,
       repo: this.repo,
       path: oldPath,
-      ref: this.branch,
+      ref: this.activeBranch,
     });
     const data = response.data;
     if (Array.isArray(data) || data.type !== 'file' || !('content' in data)) {
@@ -483,7 +539,7 @@ export class GitHubAdapter implements BackendAdapter {
     const ref = await this.octokit.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.activeBranch}`,
     });
     const headCommit = await this.octokit.rest.git.getCommit({
       owner: this.owner,
@@ -512,7 +568,7 @@ export class GitHubAdapter implements BackendAdapter {
     await this.octokit.rest.git.updateRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.activeBranch}`,
       sha: newCommit.data.sha,
     });
 
@@ -526,7 +582,7 @@ export class GitHubAdapter implements BackendAdapter {
       owner: this.owner,
       repo: this.repo,
       path: oldPath,
-      ref: this.branch,
+      ref: this.activeBranch,
     });
     const data = response.data;
     if (Array.isArray(data) || data.type !== 'file' || !('content' in data)) {
@@ -542,7 +598,7 @@ export class GitHubAdapter implements BackendAdapter {
     const ref = await this.octokit.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.activeBranch}`,
     });
     const headCommit = await this.octokit.rest.git.getCommit({
       owner: this.owner,
@@ -571,7 +627,7 @@ export class GitHubAdapter implements BackendAdapter {
     await this.octokit.rest.git.updateRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.activeBranch}`,
       sha: newCommit.data.sha,
     });
 
@@ -585,7 +641,7 @@ export class GitHubAdapter implements BackendAdapter {
     const ref = await this.octokit.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.activeBranch}`,
     });
     const headCommit = await this.octokit.rest.git.getCommit({
       owner: this.owner,
@@ -626,7 +682,7 @@ export class GitHubAdapter implements BackendAdapter {
     await this.octokit.rest.git.updateRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.activeBranch}`,
       sha: newCommit.data.sha,
     });
 
@@ -645,7 +701,7 @@ export class GitHubAdapter implements BackendAdapter {
     const ref = await this.octokit.rest.git.getRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.activeBranch}`,
     });
     const headCommit = await this.octokit.rest.git.getCommit({
       owner: this.owner,
@@ -682,7 +738,7 @@ export class GitHubAdapter implements BackendAdapter {
     await this.octokit.rest.git.updateRef({
       owner: this.owner,
       repo: this.repo,
-      ref: `heads/${this.branch}`,
+      ref: `heads/${this.activeBranch}`,
       sha: newCommit.data.sha,
     });
 
@@ -735,6 +791,145 @@ export class GitHubAdapter implements BackendAdapter {
     }
 
     return { results };
+  }
+
+  // ─── Branch lifecycle ───
+
+  async ensureWorkingBranch(): Promise<string> {
+    if (this.workingBranch) return this.workingBranch;
+    if (this.branchCreationPromise) return this.branchCreationPromise;
+
+    this.branchCreationPromise = this._createOrResumeWorkingBranch();
+    try {
+      return await this.branchCreationPromise;
+    } finally {
+      this.branchCreationPromise = null;
+    }
+  }
+
+  private async _createOrResumeWorkingBranch(): Promise<string> {
+    // Check for existing session branch to resume
+    const existing = await this.findExistingSessionBranch();
+    if (existing) {
+      this.workingBranch = existing;
+      this.invalidateTree();
+      await this.computeChangedFiles();
+      return this.workingBranch;
+    }
+
+    // Create new session branch from base branch HEAD
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const branchName = `potion/session-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+
+    const ref = await this.octokit.rest.git.getRef({
+      owner: this.owner,
+      repo: this.repo,
+      ref: `heads/${this.baseBranch}`,
+    });
+
+    await this.octokit.rest.git.createRef({
+      owner: this.owner,
+      repo: this.repo,
+      ref: `refs/heads/${branchName}`,
+      sha: ref.data.object.sha,
+    });
+
+    this.workingBranch = branchName;
+    this.invalidateTree();
+    this.changedFiles.clear();
+    return branchName;
+  }
+
+  private async findExistingSessionBranch(): Promise<string | null> {
+    try {
+      const { data } = await this.octokit.rest.git.listMatchingRefs({
+        owner: this.owner,
+        repo: this.repo,
+        ref: 'heads/potion/session-',
+      });
+      if (data.length === 0) return null;
+      // Sort descending — timestamp in name gives chronological order
+      data.sort((a, b) => b.ref.localeCompare(a.ref));
+      return data[0].ref.replace('refs/heads/', '');
+    } catch {
+      return null;
+    }
+  }
+
+  private async computeChangedFiles(): Promise<void> {
+    if (!this.workingBranch) return;
+    this.changedFiles.clear();
+    try {
+      const { data } = await this.octokit.rest.repos.compareCommits({
+        owner: this.owner,
+        repo: this.repo,
+        base: this.baseBranch,
+        head: this.workingBranch,
+      });
+      for (const file of data.files ?? []) {
+        this.changedFiles.add(file.filename);
+      }
+    } catch {
+      // Branch may be identical to base
+    }
+  }
+
+  getBranchStatus(): BranchStatus {
+    return {
+      baseBranch: this.baseBranch,
+      workingBranch: this.workingBranch,
+      changedFiles: Array.from(this.changedFiles),
+    };
+  }
+
+  async createPullRequest(title?: string): Promise<{ url: string; number: number }> {
+    if (!this.workingBranch) {
+      throw new AdapterError('CONFLICT', 'No working branch active');
+    }
+    // Refresh changed files count
+    await this.computeChangedFiles();
+    if (this.changedFiles.size === 0) {
+      throw new AdapterError('CONFLICT', 'No changes to submit');
+    }
+
+    const prTitle = title || `Potion edits ${new Date().toLocaleDateString()}`;
+    const body = [
+      `## Changed files (${this.changedFiles.size})`,
+      '',
+      ...Array.from(this.changedFiles).map((f) => `- \`${f}\``),
+      '',
+      '_Created by Potion_',
+    ].join('\n');
+
+    const { data: pr } = await this.octokit.rest.pulls.create({
+      owner: this.owner,
+      repo: this.repo,
+      title: prTitle,
+      body,
+      head: this.workingBranch,
+      base: this.baseBranch,
+    });
+
+    return { url: pr.html_url, number: pr.number };
+  }
+
+  async discardWorkingBranch(): Promise<void> {
+    if (!this.workingBranch) return;
+
+    try {
+      await this.octokit.rest.git.deleteRef({
+        owner: this.owner,
+        repo: this.repo,
+        ref: `heads/${this.workingBranch}`,
+      });
+    } catch {
+      // Branch may already be gone
+    }
+
+    this.workingBranch = null;
+    this.changedFiles.clear();
+    this.invalidateTree();
   }
 
   // ─── Search ───

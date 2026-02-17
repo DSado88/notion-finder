@@ -40,12 +40,19 @@ export interface BackendCapabilities {
   canMove: boolean;
   canSearch: boolean;
   canSync: boolean;
+  canBranch: boolean;
 }
 
 export interface SyncStatus {
   ahead: number;
   behind: number;
   hasRemote: boolean;
+}
+
+export interface BranchStatus {
+  baseBranch: string;
+  workingBranch: string | null;
+  changedFiles: string[];
 }
 
 // ─── Adapter Interface ───
@@ -88,4 +95,10 @@ export interface BackendAdapter {
   syncPull?(): Promise<void>;
   syncPush?(): Promise<void>;
   syncCommitAll?(message: string): Promise<void>;
+
+  // Branch workflow (optional — only git-github)
+  getBranchStatus?(): BranchStatus;
+  ensureWorkingBranch?(): Promise<string>;
+  createPullRequest?(title?: string): Promise<{ url: string; number: number }>;
+  discardWorkingBranch?(): Promise<void>;
 }

@@ -104,6 +104,7 @@ export class NotionAdapter implements BackendAdapter {
     canMove: true,
     canSearch: true,
     canSync: false,
+    canBranch: false,
   };
 
   async getRootItems(): Promise<FinderItem[]> {

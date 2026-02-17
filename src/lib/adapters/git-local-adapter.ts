@@ -50,6 +50,7 @@ export class GitLocalAdapter implements BackendAdapter {
     canMove: true,
     canSearch: true,
     canSync: true,
+    canBranch: false,
   };
 
   private rootDir: string;

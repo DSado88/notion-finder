@@ -7,6 +7,7 @@ import { usePreview, type PreviewData } from '@/hooks/use-preview';
 import { useRename } from '@/hooks/use-rename';
 import { useBackend } from '@/hooks/use-backend';
 import { InlineEdit } from '@/components/inline-edit';
+import { refreshBranchStatus } from '@/hooks/use-branch';
 
 const LazyPlateEditor = dynamic(
   () => import('@/components/editor/plate-editor').then((m) => m.PlateEditor),
@@ -75,6 +76,8 @@ const PagePreviewContent = memo(function PagePreviewContent({ itemId, data }: { 
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `Save failed: HTTP ${res.status}`);
       }
+      // Refresh branch status so toolbar updates immediately
+      refreshBranchStatus();
     },
     [itemId],
   );
