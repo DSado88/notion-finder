@@ -11,10 +11,13 @@ import {
   H1Plugin,
   H2Plugin,
   H3Plugin,
+  H4Plugin,
+  H5Plugin,
+  H6Plugin,
   BlockquotePlugin,
   HorizontalRulePlugin,
 } from '@platejs/basic-nodes/react';
-import { ListPlugin } from '@platejs/list/react';
+import { ListPlugin, useTodoListElement, useTodoListElementState } from '@platejs/list/react';
 import { IndentPlugin } from '@platejs/indent/react';
 import { CodeBlockPlugin } from '@platejs/code-block/react';
 import { LinkPlugin } from '@platejs/link/react';
@@ -27,11 +30,43 @@ import { SlashInputElement } from './slash-node';
 
 function HrElement(props: PlateElementProps) {
   return (
-    <PlateElement {...props} as="div">
-      <hr contentEditable={false} className="my-4 border-t" style={{ borderColor: 'var(--border)' }} />
+    <PlateElement {...props}>
+      <div contentEditable={false}>
+        <hr className="my-4 border-t" style={{ borderColor: 'var(--border)' }} />
+      </div>
       {props.children}
     </PlateElement>
   );
+}
+
+function TodoListElement(props: PlateElementProps) {
+  const state = useTodoListElementState({ element: props.element });
+  const { checkboxProps } = useTodoListElement(state);
+  return (
+    <PlateElement {...props}>
+      <div className="flex items-start gap-1.5">
+        <input
+          type="checkbox"
+          checked={checkboxProps.checked}
+          onChange={(e) => checkboxProps.onCheckedChange(e.target.checked)}
+          onMouseDown={checkboxProps.onMouseDown}
+          className="mt-1 h-4 w-4 shrink-0"
+          contentEditable={false}
+        />
+        <span className={checkboxProps.checked ? 'line-through opacity-60' : ''}>
+          {props.children}
+        </span>
+      </div>
+    </PlateElement>
+  );
+}
+
+function ParagraphElement(props: PlateElementProps) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((props.element as any).listStyleType === 'todo') {
+    return <TodoListElement {...props} />;
+  }
+  return <PlateElement {...props}>{props.children}</PlateElement>;
 }
 
 interface PlateEditorProps {
@@ -42,10 +77,13 @@ interface PlateEditorProps {
 }
 
 const PLUGINS = [
-  ParagraphPlugin,
+  ParagraphPlugin.withComponent(ParagraphElement),
   H1Plugin,
   H2Plugin,
   H3Plugin,
+  H4Plugin,
+  H5Plugin,
+  H6Plugin,
   BlockquotePlugin,
   HorizontalRulePlugin.withComponent(HrElement),
   BoldPlugin,
