@@ -247,6 +247,7 @@ export class GitHubAdapter implements BackendAdapter {
         markdown: '',
         title: basename(itemId),
         url: `https://github.com/${this.owner}/${this.repo}/tree/${this.branch}/${itemId}`,
+        lastEditedTime: new Date().toISOString(),
       };
     }
 
@@ -274,6 +275,7 @@ export class GitHubAdapter implements BackendAdapter {
         markdown: body,
         title,
         url: `https://github.com/${this.owner}/${this.repo}/blob/${this.branch}/${itemId}`,
+        lastEditedTime: new Date().toISOString(),
       };
     } catch (err) {
       if (err instanceof AdapterError) throw err;

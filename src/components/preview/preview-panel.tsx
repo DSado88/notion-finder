@@ -110,9 +110,11 @@ const PagePreviewContent = memo(function PagePreviewContent({ itemId, data }: { 
           )}
         </div>
       </div>
-      <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }}>
-        Last edited {new Date(data.lastEditedTime).toLocaleDateString()}
-      </p>
+      {data.lastEditedTime && !isNaN(new Date(data.lastEditedTime).getTime()) && (
+        <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }}>
+          Last edited {new Date(data.lastEditedTime).toLocaleDateString()}
+        </p>
+      )}
       {data.properties.length > 0 && (
         <div className="mb-4 rounded" style={{ border: '1px solid var(--border)' }}>
           <table className="w-full text-[13px]">
