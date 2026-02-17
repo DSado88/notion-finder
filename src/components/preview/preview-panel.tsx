@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { memo, useCallback } from 'react';
 import { useFinderStore } from '@/stores/finder-store';
 import { usePreview, type PreviewData } from '@/hooks/use-preview';
 import { useRename } from '@/hooks/use-rename';
+import { InlineEdit } from '@/components/inline-edit';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+const REMARK_PLUGINS = [remarkGfm];
 
 function EditableTitle({
   itemId,
@@ -19,53 +22,21 @@ function EditableTitle({
   // data.title which can be stale from a re-fetch that races the rename.
   const storeTitle = useFinderStore((s) => s.itemById[itemId]?.title);
   const title = storeTitle || data.title || 'Untitled';
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(title);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const confirmedRef = useRef(false);
-  const readyRef = useRef(false);
+  const isEditing = useFinderStore((s) => s.editingItemId === itemId);
+  const startEditing = useFinderStore((s) => s.startEditing);
+  const stopEditing = useFinderStore((s) => s.stopEditing);
 
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      confirmedRef.current = false;
-      readyRef.current = false;
-      setDraft(title);
-      const rafId = requestAnimationFrame(() => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-          inputRef.current.select();
-          readyRef.current = true;
-        }
-      });
-      return () => cancelAnimationFrame(rafId);
-    }
-  }, [isEditing, title]);
-
-  const confirm = useCallback(() => {
-    if (!readyRef.current) return;
-    if (confirmedRef.current) return;
-    confirmedRef.current = true;
-    renamePage(itemId, draft);
-    setIsEditing(false);
-  }, [itemId, draft, renamePage]);
-
-  const cancel = useCallback(() => {
-    confirmedRef.current = true;
-    setIsEditing(false);
-  }, []);
+  const handleConfirm = useCallback(
+    (newTitle: string) => { renamePage(itemId, newTitle); },
+    [itemId, renamePage],
+  );
 
   if (isEditing) {
     return (
-      <input
-        ref={inputRef}
-        type="text"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); confirm(); }
-          else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-        }}
-        onBlur={confirm}
+      <InlineEdit
+        value={title}
+        onConfirm={handleConfirm}
+        onCancel={stopEditing}
         className="w-full text-2xl font-bold outline-none ring-1 ring-blue-400 rounded-sm px-0.5 bg-white dark:bg-zinc-800"
         style={{ color: 'var(--foreground)' }}
       />
@@ -76,7 +47,7 @@ function EditableTitle({
     <h2
       className="text-2xl font-bold cursor-text"
       style={{ color: 'var(--foreground)' }}
-      onDoubleClick={() => setIsEditing(true)}
+      onDoubleClick={() => startEditing(itemId)}
     >
       {data.icon && <span className="mr-2">{data.icon}</span>}
       {title}
@@ -84,7 +55,7 @@ function EditableTitle({
   );
 }
 
-function PagePreviewContent({ itemId, data }: { itemId: string; data: Extract<PreviewData, { type: 'page' }> }) {
+const PagePreviewContent = memo(function PagePreviewContent({ itemId, data }: { itemId: string; data: Extract<PreviewData, { type: 'page' }> }) {
   const setPendingDelete = useFinderStore((s) => s.setPendingDelete);
   const item = useFinderStore((s) => s.itemById[itemId]);
 
@@ -136,7 +107,7 @@ function PagePreviewContent({ itemId, data }: { itemId: string; data: Extract<Pr
       )}
       {data.markdown ? (
         <div className="prose prose-base dark:prose-invert max-w-none leading-relaxed prose-headings:font-semibold prose-p:my-1 prose-li:my-0">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>
             {data.markdown}
           </ReactMarkdown>
         </div>
@@ -145,7 +116,7 @@ function PagePreviewContent({ itemId, data }: { itemId: string; data: Extract<Pr
       )}
     </div>
   );
-}
+});
 
 function DatabasePreviewContent({ data }: { data: Extract<PreviewData, { type: 'database' }> }) {
   return (

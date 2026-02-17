@@ -98,7 +98,7 @@ export class NotionService {
 
   // TTLs in milliseconds
   private readonly ROOT_TTL = 30 * 60 * 1000; // 30 min
-  private readonly CHILDREN_TTL = 60 * 1000; // 60s
+  private readonly CHILDREN_TTL = 5 * 60 * 1000; // 5 min
   private readonly CONTENT_TTL = 5 * 60 * 1000; // 5 min
 
   // ─── Cache helpers ───
@@ -507,13 +507,19 @@ export class NotionService {
       // Use Notion's internal API (submitTransaction) instead.
       await this.moveToWorkspace(pageId, oldParentId);
     } else {
-      const parent = { type: 'page_id', page_id: newParentId };
-      await notionFetch(`/pages/${pageId}/move`, {
-        method: 'POST',
-        body: { parent },
-        priority,
-        apiVersion: '2025-09-03',
-      });
+      try {
+        const parent = { type: 'page_id', page_id: newParentId };
+        await notionFetch(`/pages/${pageId}/move`, {
+          method: 'POST',
+          body: { parent },
+          priority,
+          apiVersion: '2025-09-03',
+        });
+      } catch {
+        // Public API can't see pages created via internal API (submitTransaction).
+        // Fall back to internal API move.
+        await this.moveViaInternalApi(pageId, oldParentId, newParentId);
+      }
     }
 
     // Invalidate caches for both old and new parents
@@ -584,6 +590,71 @@ export class NotionService {
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Workspace move failed: HTTP ${res.status} — ${text}`);
+    }
+  }
+
+  /**
+   * Move a page to a new parent using Notion's internal API.
+   * Fallback for when the public API can't see the target parent
+   * (e.g., pages created via submitTransaction).
+   */
+  private async moveViaInternalApi(
+    pageId: string,
+    oldParentId: string | null,
+    newParentId: string,
+  ): Promise<void> {
+    const tokenV2 = process.env.NOTION_TOKEN_V2;
+    if (!tokenV2) {
+      throw new Error('NOTION_TOKEN_V2 required for internal move fallback');
+    }
+
+    const operations: Record<string, unknown>[] = [];
+
+    // Remove from old parent's content list
+    if (oldParentId) {
+      operations.push({
+        id: oldParentId,
+        table: 'block',
+        path: ['content'],
+        command: 'listRemove',
+        args: { id: pageId },
+      });
+    }
+
+    // Update the page's parent to the new parent block
+    operations.push({
+      id: pageId,
+      table: 'block',
+      path: [],
+      command: 'update',
+      args: {
+        parent_id: newParentId,
+        parent_table: 'block',
+        alive: true,
+      },
+    });
+
+    // Add to new parent's content list
+    operations.push({
+      id: newParentId,
+      table: 'block',
+      path: ['content'],
+      command: 'listAfter',
+      args: { id: pageId },
+    });
+
+    const res = await fetch('https://www.notion.so/api/v3/submitTransaction', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `token_v2=${tokenV2}`,
+      },
+      body: JSON.stringify({ operations }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Internal move failed: HTTP ${res.status} — ${text}`);
     }
   }
 

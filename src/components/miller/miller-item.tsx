@@ -1,8 +1,8 @@
 'use client';
 
-import { memo, useCallback, useState, useRef, useEffect } from 'react';
+import { memo, useCallback } from 'react';
 import { useDragStore } from '@/stores/drag-store';
-import { useFinderStore } from '@/stores/finder-store';
+import { InlineEdit } from '@/components/inline-edit';
 import type { FinderItem, NotionIcon } from '@/types/finder';
 
 interface MillerItemProps {
@@ -46,63 +46,6 @@ export const MillerItem = memo(
     const startDrag = useDragStore((s) => s.startDrag);
     const endDrag = useDragStore((s) => s.endDrag);
     const setDropTarget = useDragStore((s) => s.setDropTarget);
-
-    const [draftTitle, setDraftTitle] = useState(item.title || 'Untitled');
-    const inputRef = useRef<HTMLInputElement>(null);
-    const confirmedRef = useRef(false);
-    const readyRef = useRef(false);
-
-    // Focus input when entering edit mode (rAF to avoid immediate blur from triggering click/Enter)
-    useEffect(() => {
-      if (isEditing && inputRef.current) {
-        confirmedRef.current = false;
-        readyRef.current = false;
-        setDraftTitle(item.title || 'Untitled');
-        const rafId = requestAnimationFrame(() => {
-          if (inputRef.current) {
-            inputRef.current.focus();
-            inputRef.current.select();
-            readyRef.current = true;
-          }
-        });
-        return () => cancelAnimationFrame(rafId);
-      }
-    }, [isEditing, item.title]);
-
-    // Cancel edit on unmount (virtualization safety)
-    const stopEditing = useFinderStore((s) => s.stopEditing);
-    useEffect(() => {
-      if (!isEditing) return;
-      return () => {
-        // Only cancel on real unmounts (readyRef guards against React strict mode double-mount)
-        if (!confirmedRef.current && readyRef.current) stopEditing();
-      };
-    }, [isEditing, stopEditing]);
-
-    const handleConfirm = useCallback(() => {
-      if (!readyRef.current) return;
-      if (confirmedRef.current) return;
-      confirmedRef.current = true;
-      onRenameConfirm(item.id, draftTitle);
-    }, [item.id, draftTitle, onRenameConfirm]);
-
-    const handleCancel = useCallback(() => {
-      confirmedRef.current = true;
-      onRenameCancel();
-    }, [onRenameCancel]);
-
-    const handleKeyDown = useCallback(
-      (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          handleConfirm();
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          handleCancel();
-        }
-      },
-      [handleConfirm, handleCancel],
-    );
 
     const canDrag = item.type === 'page' && !isEditing;
 
@@ -157,16 +100,12 @@ export const MillerItem = memo(
       >
         {renderIcon(item.icon, item.type)}
         {isEditing ? (
-          <input
-            ref={inputRef}
-            type="text"
-            value={draftTitle}
-            onChange={(e) => setDraftTitle(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onBlur={handleConfirm}
+          <InlineEdit
+            value={item.title || 'Untitled'}
+            onConfirm={(title) => onRenameConfirm(item.id, title)}
+            onCancel={onRenameCancel}
             className="min-w-0 flex-1 rounded-sm bg-white px-0.5 text-[14px] leading-[1.4] text-gray-900 outline-none ring-1 ring-blue-400 dark:bg-zinc-800 dark:text-gray-100"
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
+            stopPropagation
           />
         ) : (
           <span className="min-w-0 flex-1 truncate">{item.title || 'Untitled'}</span>

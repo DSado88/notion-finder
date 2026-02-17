@@ -320,9 +320,10 @@ export const useFinderStore = create<FinderStore>((set) => ({
       const updated = exists
         ? current.filter((id) => id !== itemId)
         : [...current, itemId];
+      // Don't update anchor on Cmd+Click — anchor is set by plain click
+      // (selectItem) so Shift+Click ranges from the original selection.
       return {
         multiSelections: { ...state.multiSelections, [columnIndex]: updated },
-        selectionAnchor: { ...state.selectionAnchor, [columnIndex]: itemId },
       };
     }),
 

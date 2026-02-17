@@ -45,7 +45,7 @@ export function useChildren(parentId: string) {
     return () => {
       cancelled = true;
     };
-  }, [parentId, children, setChildren]);
+  }, [parentId, children, setChildren, markNoChildren]);
 
   return { children: children ?? [], isLoading, error };
 }

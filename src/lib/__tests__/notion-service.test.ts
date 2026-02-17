@@ -5,7 +5,7 @@
  * fix in the implementation turns it GREEN.
  */
 
-import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach, type Mock } from 'vitest';
 
 // ─── Mocks ───
 
@@ -14,6 +14,8 @@ vi.mock('fs/promises', () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
   mkdir: vi.fn().mockResolvedValue(undefined),
 }));
+
+import { readFile, writeFile, mkdir } from 'fs/promises';
 
 vi.mock('../notion-client', () => ({
   notionFetch: vi.fn(),
@@ -96,7 +98,11 @@ describe('NotionService', () => {
   let service: NotionService;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    // Re-establish fs mocks (resetAllMocks clears implementations)
+    vi.mocked(readFile).mockRejectedValue(new Error('ENOENT'));
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+    vi.mocked(mkdir).mockResolvedValue(undefined);
     service = new NotionService();
   });
 
@@ -208,32 +214,55 @@ describe('NotionService', () => {
   });
 
   // ──────────────────────────────────────────────────────────
-  // P1-6: movePage sends workspace: 'true' (string) not true (boolean)
+  // P1-6: movePage to workspace uses internal API (submitTransaction)
   // ──────────────────────────────────────────────────────────
-  describe('P1-6: movePage workspace parent shape', () => {
-    it('should pass workspace: true (boolean) when moving to workspace root', async () => {
-      // Mock: page lookup (for old parent) + move call
+  describe('P1-6: movePage workspace uses internal API', () => {
+    const originalEnv = { ...process.env };
+
+    afterEach(() => {
+      process.env = originalEnv;
+      vi.restoreAllMocks();
+    });
+
+    it('should use submitTransaction when moving to workspace root', async () => {
+      // Set env vars required by moveToWorkspace
+      process.env.NOTION_TOKEN_V2 = 'fake-token-v2';
+      process.env.NOTION_SPACE_ID = 'fake-space-id';
+
+      // Build workspace index (empty)
+      mockPaginateAll.mockResolvedValueOnce([]);
+
+      // Page lookup to find old parent
       mockNotionFetch.mockResolvedValueOnce(
         fakePage('page-1', 'Page', 'page_id', 'some-parent'),
       );
-      mockNotionFetch.mockResolvedValueOnce({}); // move response
-      // Workspace index rebuild after move
-      mockPaginateAll.mockResolvedValue([]);
+
+      // Mock global fetch for submitTransaction
+      const mockFetch = vi.fn().mockResolvedValueOnce({ ok: true });
+      vi.stubGlobal('fetch', mockFetch);
 
       await service.movePage('page-1', 'workspace');
 
-      // Find the POST /move call
+      // Should have called submitTransaction, NOT the public /move API
+      expect(mockFetch).toHaveBeenCalledOnce();
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('https://www.notion.so/api/v3/submitTransaction');
+      expect(opts.method).toBe('POST');
+
+      // Verify operations include parent update to space
+      const body = JSON.parse(opts.body);
+      const updateOp = body.operations.find(
+        (op: Record<string, unknown>) => op.command === 'update',
+      );
+      expect(updateOp).toBeDefined();
+      expect(updateOp.args.parent_table).toBe('space');
+      expect(updateOp.args.parent_id).toBe('fake-space-id');
+
+      // Public /move endpoint should NOT have been called
       const moveCall = mockNotionFetch.mock.calls.find(
         ([path]) => typeof path === 'string' && path.includes('/move'),
       );
-      expect(moveCall).toBeDefined();
-
-      const body = moveCall![1]?.body as { parent: Record<string, unknown> };
-
-      // BUG: workspace is 'true' (string) due to Record<string, string> type
-      // FIX: workspace is true (boolean)
-      expect(body.parent.workspace).toBe(true);
-      expect(typeof body.parent.workspace).toBe('boolean');
+      expect(moveCall).toBeUndefined();
     });
   });
 
