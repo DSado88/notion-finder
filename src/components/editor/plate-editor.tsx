@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { Plate, PlateContent, usePlateEditor, ParagraphPlugin } from 'platejs/react';
+import { Plate, PlateContent, PlateElement, usePlateEditor, ParagraphPlugin } from 'platejs/react';
+import type { PlateElementProps } from 'platejs/react';
 import {
   BoldPlugin,
   ItalicPlugin,
@@ -22,6 +23,15 @@ import { SlashPlugin, SlashInputPlugin } from '@platejs/slash-command/react';
 import { KEYS } from 'platejs';
 import { SlashInputElement } from './slash-node';
 
+function HrElement(props: PlateElementProps) {
+  return (
+    <PlateElement {...props} as="div">
+      <hr contentEditable={false} className="my-4 border-t" style={{ borderColor: 'var(--border)' }} />
+      {props.children}
+    </PlateElement>
+  );
+}
+
 interface PlateEditorProps {
   itemId: string;
   initialMarkdown: string;
@@ -35,7 +45,7 @@ const PLUGINS = [
   H2Plugin,
   H3Plugin,
   BlockquotePlugin,
-  HorizontalRulePlugin,
+  HorizontalRulePlugin.withComponent(HrElement),
   BoldPlugin,
   ItalicPlugin,
   StrikethroughPlugin,
