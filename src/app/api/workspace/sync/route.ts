@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getAdapter } from '@/lib/adapters';
+import { getAdapterFromRequest } from '@/lib/adapters';
 
 export const dynamic = 'force-dynamic';
 
 /** GET /api/workspace/sync — sync status (ahead/behind) */
 export async function GET() {
   try {
-    const adapter = getAdapter();
+    const adapter = await getAdapterFromRequest();
     if (!adapter.getSyncStatus) {
       return NextResponse.json(
         { error: 'Sync not supported by this backend' },
@@ -24,7 +24,7 @@ export async function GET() {
 /** POST /api/workspace/sync — pull, push, or commit */
 export async function POST(req: Request) {
   try {
-    const adapter = getAdapter();
+    const adapter = await getAdapterFromRequest();
     const body = await req.json();
     const { action, message } = body as { action: string; message?: string };
 

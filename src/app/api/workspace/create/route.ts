@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdapter } from '@/lib/adapters';
+import { getAdapterFromRequest } from '@/lib/adapters';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const item = await getAdapter().createPage(parent_id, title ?? 'Untitled');
+    const item = await (await getAdapterFromRequest()).createPage(parent_id, title ?? 'Untitled');
     return NextResponse.json({ item });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

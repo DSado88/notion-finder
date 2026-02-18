@@ -23,10 +23,11 @@ export interface NotionParent {
 }
 
 export interface NotionIcon {
-  type: 'emoji' | 'external' | 'file';
+  type: 'emoji' | 'external' | 'file' | 'lucide';
   emoji?: string;
   external?: { url: string };
   file?: { url: string };
+  lucide?: { name: string; color?: string };
 }
 
 export interface NotionPage {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdapter } from '@/lib/adapters';
+import { getAdapterFromRequest } from '@/lib/adapters';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,7 @@ export async function GET(
   try {
     const { id: segments } = await params;
     const id = segments.join('/');
-    const content = await getAdapter().getContent(id);
+    const content = await (await getAdapterFromRequest()).getContent(id);
 
     return NextResponse.json({
       page: {

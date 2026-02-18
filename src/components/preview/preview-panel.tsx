@@ -7,6 +7,7 @@ import { usePreview, type PreviewData } from '@/hooks/use-preview';
 import { useRename } from '@/hooks/use-rename';
 import { useBackend } from '@/hooks/use-backend';
 import { InlineEdit } from '@/components/inline-edit';
+import { ItemIcon } from '@/components/item-icon';
 import { refreshBranchStatus } from '@/hooks/use-branch';
 
 const LazyPlateEditor = dynamic(
@@ -53,7 +54,6 @@ function EditableTitle({
       style={{ color: 'var(--foreground)' }}
       onDoubleClick={() => startEditing(itemId)}
     >
-      {data.icon && <span className="mr-2">{data.icon}</span>}
       {title}
     </h2>
   );
@@ -92,7 +92,8 @@ const PagePreviewContent = memo(function PagePreviewContent({ itemId, data }: { 
               href={data.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[11px] opacity-40 hover:opacity-70"
+              className="rounded-md px-2 py-0.5 text-[11px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+              style={{ color: 'var(--muted)' }}
             >
               Open &#x2197;
             </a>
@@ -106,7 +107,7 @@ const PagePreviewContent = memo(function PagePreviewContent({ itemId, data }: { 
                   parentId: item.parentId ?? 'workspace',
                 })
               }
-              className="text-[11px] text-red-500/60 hover:text-red-500"
+              className="rounded-md px-2 py-0.5 text-[11px] text-red-500/60 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950"
             >
               Archive
             </button>
@@ -119,17 +120,17 @@ const PagePreviewContent = memo(function PagePreviewContent({ itemId, data }: { 
         </p>
       )}
       {data.properties.length > 0 && (
-        <div className="mb-4 rounded" style={{ border: '1px solid var(--border)' }}>
-          <table className="w-full text-[13px]">
-            <tbody>
-              {data.properties.map((prop) => (
-                <tr key={prop.name} className="last:border-0" style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td className="px-2.5 py-1.5 font-medium" style={{ color: 'var(--muted)', width: '35%' }}>{prop.name}</td>
-                  <td className="px-2.5 py-1.5" style={{ color: 'var(--foreground)' }}>{prop.value}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {data.properties.map((prop) => (
+            <span
+              key={prop.name}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px]"
+              style={{ background: 'var(--accent)' }}
+            >
+              <span style={{ color: 'var(--muted)' }}>{prop.name}:</span>
+              <span className="font-medium" style={{ color: 'var(--foreground)' }}>{prop.value}</span>
+            </span>
+          ))}
         </div>
       )}
       {data.markdown ? (
@@ -235,14 +236,14 @@ export function PreviewPanel() {
 
   if (!previewTargetId) {
     return (
-      <div className="flex h-full min-w-[300px] flex-1 items-center justify-center" style={{ borderLeft: '1px solid var(--border)' }}>
+      <div className="flex h-full min-w-[300px] flex-1 items-center justify-center" style={{ borderLeft: '1px solid var(--border)', background: 'var(--background)' }}>
         <p className="text-sm text-gray-400">Select an item to preview</p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-w-[300px] flex-1 flex-col overflow-hidden" style={{ borderLeft: '1px solid var(--border)' }}>
+    <div className="flex h-full min-w-[300px] flex-1 flex-col overflow-hidden" style={{ borderLeft: '1px solid var(--border)', background: 'var(--background)' }}>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {isLoading && !data && (
           <div className="flex flex-col">
@@ -250,10 +251,8 @@ export function PreviewPanel() {
             {item && (
               <>
                 <div className="mb-1 flex items-start justify-between gap-2">
-                  <h2 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
-                    {item.icon && typeof item.icon === 'object' && 'emoji' in item.icon && (
-                      <span className="mr-2">{item.icon.emoji}</span>
-                    )}
+                  <h2 className="flex items-center gap-2 text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
+                    {item.icon && <ItemIcon icon={item.icon} type={item.type} size={22} />}
                     {item.title || 'Untitled'}
                   </h2>
                   <div className="mt-1.5 flex flex-none items-center gap-2">

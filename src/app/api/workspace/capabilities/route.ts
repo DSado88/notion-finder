@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getAdapter } from '@/lib/adapters';
+import { getAdapterFromRequest, AdapterResolutionError } from '@/lib/adapters';
 
 export async function GET() {
-  const adapter = getAdapter();
-  return NextResponse.json({
-    name: adapter.name,
-    capabilities: adapter.capabilities,
-  });
+  try {
+    const adapter = await getAdapterFromRequest();
+    return NextResponse.json({
+      name: adapter.name,
+      capabilities: adapter.capabilities,
+    });
+  } catch (err) {
+    if (err instanceof AdapterResolutionError) {
+      return NextResponse.json({ error: 'No active connection' }, { status: 401 });
+    }
+    throw err;
+  }
 }

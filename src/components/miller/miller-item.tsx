@@ -3,13 +3,15 @@
 import { memo, useCallback } from 'react';
 import { useDragStore } from '@/stores/drag-store';
 import { InlineEdit } from '@/components/inline-edit';
-import type { FinderItem, NotionIcon } from '@/types/finder';
+import { ItemIcon } from '@/components/item-icon';
+import type { FinderItem } from '@/types/finder';
 
 interface MillerItemProps {
   item: FinderItem;
   isSelected: boolean;
   isMultiSelected: boolean;
   isEditing: boolean;
+  rowIndex?: number;
   onClick: (item: FinderItem, e: React.MouseEvent) => void;
   onDoubleClick: (item: FinderItem) => void;
   onContextMenu: (e: React.MouseEvent, item: FinderItem) => void;
@@ -18,22 +20,13 @@ interface MillerItemProps {
   onMouseEnter?: (item: FinderItem) => void;
 }
 
-function renderIcon(icon: NotionIcon | null, type: FinderItem['type']) {
-  if (icon?.type === 'emoji' && icon.emoji) {
-    return <span className="mr-1.5 text-sm leading-none">{icon.emoji}</span>;
-  }
-  if (type === 'database') {
-    return <span className="mr-1.5 text-xs leading-none opacity-50">&#x1F5C3;</span>;
-  }
-  return <span className="mr-1.5 text-xs leading-none opacity-50">&#x1F4C4;</span>;
-}
-
 export const MillerItem = memo(
   function MillerItem({
     item,
     isSelected,
     isMultiSelected,
     isEditing,
+    rowIndex = 0,
     onClick,
     onDoubleClick,
     onContextMenu,
@@ -72,16 +65,25 @@ export const MillerItem = memo(
 
     const highlighted = isSelected || isMultiSelected;
 
-    let className = `flex w-full items-center rounded-[3px] px-2 py-[3px] text-left text-[14px] leading-[1.4] outline-none transition-colors`;
+    let className = 'flex w-full items-center rounded-md px-2 py-[3px] text-left text-[13px] leading-[1.45] outline-none transition-colors';
 
     if (isDragging) {
       className += ' opacity-40';
     } else if (isDropTarget) {
       className += ' bg-blue-100 ring-1 ring-inset ring-blue-400 dark:bg-blue-900/30 dark:ring-blue-500';
     } else if (highlighted) {
-      className += ' bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+      className += ' text-white';
+    } else if (rowIndex % 2 === 1) {
+      className += ' hover:bg-black/[0.06] dark:hover:bg-white/[0.06]';
     } else {
-      className += ' hover:bg-black/[0.04] dark:hover:bg-white/[0.04]';
+      className += ' hover:bg-black/[0.06] dark:hover:bg-white/[0.06]';
+    }
+
+    const style: React.CSSProperties = {};
+    if (highlighted && !isDragging && !isDropTarget) {
+      style.background = 'var(--selection-bg)';
+    } else if (!isDragging && !isDropTarget && !highlighted && rowIndex % 2 === 1) {
+      style.background = 'var(--row-alt)';
     }
 
     return (
@@ -97,21 +99,22 @@ export const MillerItem = memo(
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         className={className}
+        style={style}
       >
-        {renderIcon(item.icon, item.type)}
+        <ItemIcon icon={item.icon} type={item.type} className="mr-1.5 w-5 flex-none text-center" />
         {isEditing ? (
           <InlineEdit
             value={item.title || 'Untitled'}
             onConfirm={(title) => onRenameConfirm(item.id, title)}
             onCancel={onRenameCancel}
-            className="min-w-0 flex-1 rounded-sm bg-white px-0.5 text-[14px] leading-[1.4] text-gray-900 outline-none ring-1 ring-blue-400 dark:bg-zinc-800 dark:text-gray-100"
+            className="min-w-0 flex-1 rounded-sm bg-white px-0.5 text-[13px] leading-[1.45] text-gray-900 outline-none ring-1 ring-blue-400 dark:bg-zinc-800 dark:text-gray-100"
             stopPropagation
           />
         ) : (
           <span className="min-w-0 flex-1 truncate">{item.title || 'Untitled'}</span>
         )}
         {item.hasChildren && (
-          <span className="ml-1 text-xs opacity-40">
+          <span className={`ml-1 flex-none text-[11px] ${highlighted ? 'opacity-70' : 'opacity-40'}`}>
             &#x203A;
           </span>
         )}
@@ -123,6 +126,7 @@ export const MillerItem = memo(
     prev.isSelected === next.isSelected &&
     prev.isMultiSelected === next.isMultiSelected &&
     prev.isEditing === next.isEditing &&
+    prev.rowIndex === next.rowIndex &&
     prev.item.hasChildren === next.item.hasChildren &&
     prev.item.title === next.item.title,
 );

@@ -462,19 +462,19 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
       ref={columnRef}
       tabIndex={0}
       className="relative flex h-full flex-none flex-col outline-none"
-      style={{ width: columnWidth, borderRight: '1px solid var(--border)' }}
+      style={{ width: columnWidth, borderRight: '1px solid var(--border)', background: 'var(--column-bg)' }}
       onDragOver={handleColumnDragOver}
       onDragLeave={handleColumnDragLeave}
       onDrop={handleColumnDrop}
     >
       {/* Column header */}
       <div
-        className={`relative flex h-7 flex-none items-center px-2.5 transition-colors ${
+        className={`relative flex h-8 flex-none items-center px-2.5 transition-colors ${
           isColumnDropTarget
             ? 'bg-blue-50 dark:bg-blue-900/20'
             : ''
         }`}
-        style={{ borderBottom: '1px solid var(--border)' }}
+        style={{ borderBottom: '1px solid var(--border)', background: 'var(--column-header-bg)' }}
       >
         <span className="truncate text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
           {parentTitle}
@@ -557,6 +557,7 @@ export function MillerColumn({ columnIndex, parentId }: MillerColumnProps) {
                     isSelected={selectedId === item.id}
                     isMultiSelected={multiSelections.includes(item.id)}
                     isEditing={editingItemId === item.id}
+                    rowIndex={virtualRow.index}
                     onClick={handleClick}
                     onDoubleClick={handleDoubleClick}
                     onContextMenu={handleContextMenu}

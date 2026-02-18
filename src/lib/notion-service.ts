@@ -101,6 +101,23 @@ export class NotionService {
   private readonly CHILDREN_TTL = 5 * 60 * 1000; // 5 min
   private readonly CONTENT_TTL = 5 * 60 * 1000; // 5 min
 
+  /** Optional API token override (for OAuth). Falls back to env var when undefined. */
+  private token?: string;
+
+  constructor(token?: string) {
+    this.token = token;
+  }
+
+  /** Wrapper that injects the token into notionFetch calls. */
+  private nf<T>(path: string, options: Parameters<typeof notionFetch>[1] = {}): Promise<T> {
+    return notionFetch<T>(path, { ...options, token: this.token });
+  }
+
+  /** Wrapper that injects the token into paginateAll calls. */
+  private paginate<T>(path: string, options: Parameters<typeof paginateAll>[1] = {}): Promise<T[]> {
+    return paginateAll<T>(path, { ...options, token: this.token });
+  }
+
   // ─── Cache helpers ───
 
   private getCached<T>(key: string, ttlMs: number): T | null {
@@ -162,7 +179,7 @@ export class NotionService {
     this.workspaceIndexBuildingPromise = (async () => {
       try {
         // Paginate through ALL search results
-        const allPages = await paginateAll<NotionPage | NotionDatabase>(
+        const allPages = await this.paginate<NotionPage | NotionDatabase>(
           '/search',
           { method: 'POST', body: {}, priority },
         );
@@ -376,7 +393,7 @@ export class NotionService {
     if (cached) return cached;
 
     // Direct API — fetch block children
-    const blocks = await paginateAll<NotionBlock>(
+    const blocks = await this.paginate<NotionBlock>(
       `/blocks/${parentId}/children`,
       { method: 'GET', priority },
     );
@@ -406,8 +423,8 @@ export class NotionService {
     if (cached) return cached;
 
     const [page, blocksResponse] = await Promise.all([
-      notionFetch<NotionPage>(`/pages/${pageId}`, { priority }),
-      notionFetch<NotionBlockChildrenResponse>(
+      this.nf<NotionPage>(`/pages/${pageId}`, { priority }),
+      this.nf<NotionBlockChildrenResponse>(
         `/blocks/${pageId}/children?page_size=100`,
         { priority },
       ),
@@ -433,8 +450,8 @@ export class NotionService {
     if (cached) return cached;
 
     const [database, queryResult] = await Promise.all([
-      notionFetch<NotionDatabase>(`/databases/${dbId}`, { priority }),
-      notionFetch<{ results: NotionPage[] }>(`/databases/${dbId}/query`, {
+      this.nf<NotionDatabase>(`/databases/${dbId}`, { priority }),
+      this.nf<{ results: NotionPage[] }>(`/databases/${dbId}/query`, {
         method: 'POST',
         body: {
           page_size: 10,
@@ -466,7 +483,7 @@ export class NotionService {
       body.filter = { property: 'object', value: filterType };
     }
 
-    const response = await notionFetch<{ results: (NotionPage | NotionDatabase)[] }>(
+    const response = await this.nf<{ results: (NotionPage | NotionDatabase)[] }>(
       '/search',
       { method: 'POST', body, priority },
     );
@@ -499,7 +516,7 @@ export class NotionService {
     }
 
     // Look up old parent before the move so we can invalidate its cache
-    const page = await notionFetch<NotionPage>(`/pages/${pageId}`, { priority });
+    const page = await this.nf<NotionPage>(`/pages/${pageId}`, { priority });
     const oldParentId = getParentId(page.parent);
 
     if (newParentId === 'workspace') {
@@ -509,7 +526,7 @@ export class NotionService {
     } else {
       try {
         const parent = { type: 'page_id', page_id: newParentId };
-        await notionFetch(`/pages/${pageId}/move`, {
+        await this.nf(`/pages/${pageId}/move`, {
           method: 'POST',
           body: { parent },
           priority,
@@ -723,7 +740,7 @@ export class NotionService {
       if (dryRun) {
         // Validate: check page exists
         try {
-          await notionFetch(`/pages/${move.page_id}`, { priority: 'low' });
+          await this.nf(`/pages/${move.page_id}`, { priority: 'low' });
           // Update parent map so subsequent moves in the batch see this move
           parentMap.set(
             move.page_id,
@@ -809,7 +826,7 @@ export class NotionService {
 
       try {
         // Try as page first
-        const page = await notionFetch<NotionPage>(`/pages/${currentId}`, {
+        const page = await this.nf<NotionPage>(`/pages/${currentId}`, {
           priority,
         });
         chain.unshift({
@@ -821,7 +838,7 @@ export class NotionService {
 
         // If parent is a block, resolve the block to get its parent page
         if (page.parent.type === 'block_id' && page.parent.block_id) {
-          const block = await notionFetch<NotionBlock>(
+          const block = await this.nf<NotionBlock>(
             `/blocks/${page.parent.block_id}`,
             { priority },
           );
@@ -830,7 +847,7 @@ export class NotionService {
       } catch {
         // Might be a database
         try {
-          const db = await notionFetch<NotionDatabase>(
+          const db = await this.nf<NotionDatabase>(
             `/databases/${currentId}`,
             { priority },
           );
@@ -930,7 +947,7 @@ export class NotionService {
       return this.createPageAtWorkspaceRoot(title);
     }
 
-    const page = await notionFetch<NotionPage>('/pages', {
+    const page = await this.nf<NotionPage>('/pages', {
       method: 'POST',
       body: {
         parent: { type: 'page_id', page_id: parentId },
@@ -1057,7 +1074,7 @@ export class NotionService {
     priority: Priority = 'high',
   ): Promise<void> {
     try {
-      await notionFetch(`/pages/${pageId}`, {
+      await this.nf(`/pages/${pageId}`, {
         method: 'PATCH',
         body: {
           properties: {
@@ -1133,7 +1150,7 @@ export class NotionService {
     pageId: string,
     priority: Priority = 'high',
   ): Promise<void> {
-    await notionFetch(`/pages/${pageId}`, {
+    await this.nf(`/pages/${pageId}`, {
       method: 'PATCH',
       body: { archived: true },
       priority,
@@ -1173,7 +1190,18 @@ export class NotionService {
     blockId: string,
     priority: Priority = 'high',
   ): Promise<NotionBlock> {
-    return notionFetch<NotionBlock>(`/blocks/${blockId}`, { priority });
+    return this.nf<NotionBlock>(`/blocks/${blockId}`, { priority });
+  }
+
+  async getBlockChildren(
+    blockId: string,
+    priority: Priority = 'high',
+  ): Promise<NotionBlock[]> {
+    const res = await this.nf<NotionBlockChildrenResponse>(
+      `/blocks/${blockId}/children?page_size=100`,
+      { priority },
+    );
+    return res.results;
   }
 }
 

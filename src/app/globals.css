@@ -10,6 +10,11 @@
   --accent: #f1f1ef;
   --accent-foreground: #37352f;
   --muted-foreground: #787774;
+  --column-bg: #f5f5f4;
+  --column-header-bg: #ececeb;
+  --row-alt: rgba(0, 0, 0, 0.018);
+  --selection-bg: #007aff;
+  --selection-text: #ffffff;
 }
 
 @theme inline {
@@ -34,6 +39,11 @@
     --accent: #2f2f2f;
     --accent-foreground: #e3e2e0;
     --muted-foreground: #9b9a97;
+    --column-bg: #1e1e1e;
+    --column-header-bg: #1a1a1a;
+    --row-alt: rgba(255, 255, 255, 0.015);
+    --selection-bg: #0a84ff;
+    --selection-text: #ffffff;
   }
 }
 

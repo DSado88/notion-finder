@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdapter, AdapterError } from '@/lib/adapters';
+import { getAdapterFromRequest, AdapterError } from '@/lib/adapters';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +20,7 @@ export async function POST(
       );
     }
 
-    await getAdapter().movePage(id, new_parent_id);
+    await (await getAdapterFromRequest()).movePage(id, new_parent_id);
     return NextResponse.json({ success: true });
   } catch (err) {
     if (err instanceof AdapterError && err.code === 'CYCLE_DETECTED') {

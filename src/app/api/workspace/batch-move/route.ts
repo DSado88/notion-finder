@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdapter } from '@/lib/adapters';
+import { getAdapterFromRequest } from '@/lib/adapters';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await getAdapter().batchMove(moves, {
+    const result = await (await getAdapterFromRequest()).batchMove(moves, {
       dryRun: dry_run ?? false,
     });
 

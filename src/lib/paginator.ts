@@ -26,9 +26,11 @@ export async function paginateAll<T>(
     priority?: Priority;
     pageSize?: number;
     maxPages?: number;
+    /** Override the API token (for OAuth flows). */
+    token?: string;
   } = {},
 ): Promise<T[]> {
-  const { method = 'GET', body = {}, priority = 'high', pageSize = 100, maxPages = 100 } = options;
+  const { method = 'GET', body = {}, priority = 'high', pageSize = 100, maxPages = 100, token } = options;
   const allResults: T[] = [];
   let cursor: string | undefined;
   let pageCount = 0;
@@ -45,11 +47,12 @@ export async function paginateAll<T>(
           ...(cursor ? { start_cursor: cursor } : {}),
         },
         priority,
+        token,
       });
     } else {
       const separator = path.includes('?') ? '&' : '?';
       const url = `${path}${separator}page_size=${pageSize}${cursor ? `&start_cursor=${cursor}` : ''}`;
-      response = await notionFetch<PaginatedResponse<T>>(url, { priority });
+      response = await notionFetch<PaginatedResponse<T>>(url, { priority, token });
     }
 
     allResults.push(...response.results);

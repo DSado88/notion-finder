@@ -64,6 +64,9 @@ interface FinderStore {
 
   // ---- Delete Confirmation ----
   setPendingDelete: (payload: { items: FinderItem[]; parentId: string } | null) => void;
+
+  // ---- Backend Switch ----
+  resetWorkspace: () => void;
 }
 
 export const useFinderStore = create<FinderStore>((set) => ({
@@ -564,4 +567,19 @@ export const useFinderStore = create<FinderStore>((set) => ({
 
   // ---- Delete Confirmation ----
   setPendingDelete: (payload) => set({ pendingDelete: payload }),
+
+  // ---- Backend Switch ----
+  resetWorkspace: () =>
+    set({
+      columnPath: ['workspace'],
+      selections: {},
+      previewTargetId: null,
+      multiSelections: {},
+      selectionAnchor: {},
+      editingItemId: null,
+      pendingDelete: null,
+      columnSort: {},
+      childrenByParentId: {},
+      itemById: {},
+    }),
 }));

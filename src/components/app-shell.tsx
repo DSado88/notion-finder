@@ -8,7 +8,7 @@ import { DeleteConfirmModal } from './delete-confirm-modal';
 
 export function AppShell() {
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-white dark:bg-zinc-900">
+    <div className="flex h-screen flex-col overflow-hidden" style={{ background: 'var(--background)' }}>
       <Toolbar />
       <div className="flex flex-1 overflow-hidden">
         <MillerContainer />

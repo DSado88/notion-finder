@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdapter } from '@/lib/adapters';
+import { getAdapterFromRequest } from '@/lib/adapters';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +20,7 @@ export async function PATCH(
       );
     }
 
-    await getAdapter().renamePage(id, title);
+    await (await getAdapterFromRequest()).renamePage(id, title);
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

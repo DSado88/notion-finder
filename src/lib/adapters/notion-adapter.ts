@@ -1,6 +1,5 @@
-import { notionService } from '@/lib/notion-service';
+import { NotionService } from '@/lib/notion-service';
 import { blocksToMarkdown } from '@/lib/block-to-markdown';
-import { notionFetch } from '@/lib/notion-client';
 import { AdapterError } from './types';
 import type {
   BackendAdapter,
@@ -10,7 +9,6 @@ import type {
 import type {
   FinderItem,
   NotionBlock,
-  NotionBlockChildrenResponse,
   NotionRichText,
   BatchMoveRequest,
   BatchMoveResult,
@@ -107,16 +105,22 @@ export class NotionAdapter implements BackendAdapter {
     canBranch: false,
   };
 
+  private service: NotionService;
+
+  constructor(token?: string) {
+    this.service = token ? new NotionService(token) : new NotionService();
+  }
+
   async getRootItems(): Promise<FinderItem[]> {
-    return notionService.getRootItems();
+    return this.service.getRootItems();
   }
 
   async getChildren(parentId: string): Promise<FinderItem[]> {
-    return notionService.getChildren(parentId);
+    return this.service.getChildren(parentId);
   }
 
   async getContent(itemId: string): Promise<ContentData> {
-    const { page, blocks } = await notionService.getPage(itemId);
+    const { page, blocks } = await this.service.getPage(itemId);
 
     // Fetch children for table blocks (they contain table_row children)
     const tableBlocks = blocks.filter((b) => b.type === 'table' && b.has_children);
@@ -124,11 +128,8 @@ export class NotionAdapter implements BackendAdapter {
     if (tableBlocks.length > 0) {
       await Promise.all(
         tableBlocks.map(async (tb) => {
-          const res = await notionFetch<NotionBlockChildrenResponse>(
-            `/blocks/${tb.id}/children?page_size=100`,
-            { priority: 'high' },
-          );
-          childrenMap.set(tb.id, res.results);
+          const children = await this.service.getBlockChildren(tb.id);
+          childrenMap.set(tb.id, children);
         }),
       );
     }
@@ -153,33 +154,33 @@ export class NotionAdapter implements BackendAdapter {
   }
 
   async createPage(parentId: string, title: string): Promise<FinderItem> {
-    return notionService.createPage(parentId, title);
+    return this.service.createPage(parentId, title);
   }
 
   async renamePage(itemId: string, newTitle: string): Promise<void> {
-    return notionService.renamePage(itemId, newTitle);
+    return this.service.renamePage(itemId, newTitle);
   }
 
   async archivePage(itemId: string): Promise<void> {
-    return notionService.archivePage(itemId);
+    return this.service.archivePage(itemId);
   }
 
   async movePage(itemId: string, newParentId: string): Promise<void> {
-    return notionService.movePage(itemId, newParentId);
+    return this.service.movePage(itemId, newParentId);
   }
 
   async batchMove(
     moves: BatchMoveRequest[],
     options?: { dryRun?: boolean },
   ): Promise<{ results: BatchMoveResult[] }> {
-    const response = await notionService.batchMove(moves, options);
+    const response = await this.service.batchMove(moves, options);
     return { results: response.results };
   }
 
   async batchArchive(
     pageIds: string[],
   ): Promise<{ results: { id: string; status: string; error?: string }[] }> {
-    const { succeeded, failed } = await notionService.batchArchive(pageIds);
+    const { succeeded, failed } = await this.service.batchArchive(pageIds);
     return {
       results: [
         ...succeeded.map((id) => ({ id, status: 'success' as const })),
@@ -189,6 +190,6 @@ export class NotionAdapter implements BackendAdapter {
   }
 
   async search(query: string, maxResults?: number): Promise<FinderItem[]> {
-    return notionService.search(query, undefined, maxResults);
+    return this.service.search(query, undefined, maxResults);
   }
 }

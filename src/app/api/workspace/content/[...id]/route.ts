@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdapter, AdapterError } from '@/lib/adapters';
+import { getAdapterFromRequest, AdapterError } from '@/lib/adapters';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +20,7 @@ export async function PUT(
       );
     }
 
-    await getAdapter().saveContent(id, markdown);
+    await (await getAdapterFromRequest()).saveContent(id, markdown);
     return NextResponse.json({ success: true });
   } catch (err) {
     if (err instanceof AdapterError && err.code === 'READ_ONLY') {

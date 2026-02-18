@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdapter } from '@/lib/adapters';
+import { getAdapterFromRequest } from '@/lib/adapters';
 import { AdapterError } from '@/lib/adapters/types';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 /** GET /api/workspace/branch — current branch status */
 export async function GET() {
   try {
-    const adapter = getAdapter();
+    const adapter = await getAdapterFromRequest();
     if (!adapter.getBranchStatus) {
       return NextResponse.json(
         { error: 'Branch workflow not supported by this backend' },
@@ -24,7 +24,7 @@ export async function GET() {
 /** POST /api/workspace/branch — actions: create-pr, discard */
 export async function POST(req: Request) {
   try {
-    const adapter = getAdapter();
+    const adapter = await getAdapterFromRequest();
     const body = await req.json();
     const { action, title } = body as { action: string; title?: string };
 

@@ -26,6 +26,8 @@ interface NotionFetchOptions {
   priority?: Priority;
   /** Override the Notion-Version header (e.g. for /move which requires 2025-09-03) */
   apiVersion?: string;
+  /** Override the API token (for OAuth flows). Falls back to NOTION_API_TOKEN env var. */
+  token?: string;
 }
 
 export async function notionFetch<T>(
@@ -33,10 +35,10 @@ export async function notionFetch<T>(
   options: NotionFetchOptions = {},
 ): Promise<T> {
   const { method = 'GET', body, priority = 'high', apiVersion } = options;
-  const token = process.env.NOTION_API_TOKEN;
+  const token = options.token ?? process.env.NOTION_API_TOKEN;
 
   if (!token) {
-    throw new Error('NOTION_API_TOKEN is not set');
+    throw new Error('No Notion API token available (set NOTION_API_TOKEN or connect via OAuth)');
   }
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
