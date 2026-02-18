@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { Plate, PlateContent, PlateElement, usePlateEditor, ParagraphPlugin, MemoizedChildren } from 'platejs/react';
+import { Plate, PlateContent, PlateElement, usePlateEditor, useEditorRef, ParagraphPlugin, MemoizedChildren } from 'platejs/react';
 import type { PlateElementProps } from 'platejs/react';
 import type { RenderNodeWrapper } from 'platejs/react';
 import {
@@ -32,7 +32,7 @@ import { BlockSelectionPlugin, BlockSelectionAfterEditable } from '@platejs/sele
 import { DndPlugin, useDraggable, useDropLine } from '@platejs/dnd';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Plus } from 'lucide-react';
 import { SlashInputElement } from './slash-node';
 import { FloatingToolbar } from './floating-toolbar';
 import { TableElement, TableRowElement, TableCellElement } from './table-elements';
@@ -96,51 +96,66 @@ function LinkElement(props: PlateElementProps) {
 
 const BlockDraggable: RenderNodeWrapper = ({ editor, element, path }) => {
   if (editor.dom.readOnly) return;
-  // Only wrap top-level blocks
   if (path.length !== 1) return;
 
-  return ({ children }) => <Draggable element={element}>{children}</Draggable>;
+  return (props) => <Draggable {...props} />;
 };
 
-function Draggable({ element, children }: { element: PlateElementProps['element']; children: React.ReactNode }) {
+function Draggable({ element, children }: PlateElementProps) {
   const { isDragging, nodeRef, handleRef } = useDraggable({ element });
-  const { dropLine } = useDropLine({ id: element.id as string });
-  const [hovered, setHovered] = useState(false);
+  const editor = useEditorRef();
+
+  const handleAddBlock = () => {
+    const index = editor.children.findIndex((child) => child.id === element.id);
+    if (index === -1) return;
+    editor.tf.insertNodes(
+      { type: 'p', children: [{ text: '' }] },
+      { at: [index + 1], select: true }
+    );
+  };
 
   return (
-    <div
-      ref={nodeRef}
-      className="relative"
-      style={{ opacity: isDragging ? 0.5 : 1 }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {hovered && (
-        <div
-          className="-translate-x-full absolute left-0 top-0 z-50 flex h-[1.5em] items-center pr-1"
-          contentEditable={false}
-        >
+    <div className={`group relative ${isDragging ? 'opacity-50' : ''}`}>
+      <div
+        className="absolute top-0 z-50 flex h-full -translate-x-full cursor-text opacity-0 group-hover:opacity-100"
+        contentEditable={false}
+      >
+        <div className="flex h-[1.5em] items-center">
+          <button
+            type="button"
+            onClick={handleAddBlock}
+            className="flex h-6 w-5 items-center justify-center rounded hover:bg-accent"
+            data-plate-prevent-deselect
+            title="Add block"
+          >
+            <Plus className="h-4 w-4 text-muted-foreground" />
+          </button>
           <button
             ref={handleRef}
             type="button"
             className="flex h-6 w-5 cursor-grab items-center justify-center rounded hover:bg-accent"
             data-plate-prevent-deselect
+            title="Drag to move"
           >
-            <GripVertical className="h-4 w-4" style={{ color: 'var(--muted-foreground)' }} />
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
           </button>
         </div>
-      )}
-      <MemoizedChildren>{children}</MemoizedChildren>
-      {dropLine && (
-        <div
-          className="absolute inset-x-0 h-0.5"
-          style={{
-            background: '#2383e2',
-            ...(dropLine === 'top' ? { top: -1 } : { bottom: -1 }),
-          }}
-        />
-      )}
+      </div>
+      <div ref={nodeRef}>
+        <MemoizedChildren>{children}</MemoizedChildren>
+        <DropLineIndicator />
+      </div>
     </div>
+  );
+}
+
+function DropLineIndicator() {
+  const { dropLine } = useDropLine();
+  if (!dropLine) return null;
+  return (
+    <div
+      className={`absolute inset-x-0 h-0.5 bg-blue-500/50 ${dropLine === 'top' ? '-top-px' : '-bottom-px'}`}
+    />
   );
 }
 
@@ -154,7 +169,14 @@ interface PlateEditorProps {
 const PLUGINS = [
   NodeIdPlugin,
   BlockSelectionPlugin,
-  DndPlugin.configure({ render: { aboveNodes: BlockDraggable } }),
+  DndPlugin.configure({
+    render: {
+      aboveNodes: BlockDraggable,
+      aboveSlate: ({ children }) => (
+        <DndProvider backend={HTML5Backend}>{children}</DndProvider>
+      ),
+    },
+  }),
   ParagraphPlugin.withComponent(ParagraphElement),
   H1Plugin,
   H2Plugin,
@@ -262,22 +284,20 @@ export function PlateEditor({
           {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
         </div>
       )}
-      <DndProvider backend={HTML5Backend}>
-        <Plate
-          key={itemId}
-          editor={editor}
-          readOnly={readOnly}
-          onChange={handleChange}
-        >
-          {!readOnly && <FloatingToolbar />}
-          {!readOnly && <TableFloatingToolbar />}
-          <PlateContent
-            className="prose prose-base dark:prose-invert max-w-none pl-8 leading-relaxed prose-headings:font-semibold prose-p:my-1 prose-li:my-0 outline-none"
-            style={{ color: 'var(--foreground)', caretColor: 'var(--foreground)' }}
-          />
-          {!readOnly && <BlockSelectionAfterEditable />}
-        </Plate>
-      </DndProvider>
+      <Plate
+        key={itemId}
+        editor={editor}
+        readOnly={readOnly}
+        onChange={handleChange}
+      >
+        {!readOnly && <FloatingToolbar />}
+        {!readOnly && <TableFloatingToolbar />}
+        <PlateContent
+          className="prose prose-base dark:prose-invert max-w-none pl-8 leading-relaxed prose-headings:font-semibold prose-p:my-1 prose-li:my-0 outline-none"
+          style={{ color: 'var(--foreground)', caretColor: 'var(--foreground)' }}
+        />
+        {!readOnly && <BlockSelectionAfterEditable />}
+      </Plate>
     </div>
   );
 }

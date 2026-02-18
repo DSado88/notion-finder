@@ -84,18 +84,21 @@ export function prefetchPreview(item: FinderItem | null) {
 
 export function usePreview(item: FinderItem | null) {
   const [data, setData] = useState<PreviewData | null>(null);
+  const [dataItemId, setDataItemId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!item) {
       setData(null);
+      setDataItemId(null);
       return;
     }
 
     const cached = previewCache.get(item.id);
     if (cached) {
       setData(cached);
+      setDataItemId(item.id);
       return;
     }
 
@@ -103,6 +106,7 @@ export function usePreview(item: FinderItem | null) {
     setIsLoading(true);
     setError(null);
     setData(null);
+    setDataItemId(null);
 
     const endpoint = item.type === 'database'
       ? `/api/notion/database/${item.id}`
@@ -140,6 +144,7 @@ export function usePreview(item: FinderItem | null) {
 
         previewCache.set(item.id, preview);
         setData(preview);
+        setDataItemId(item.id);
         setIsLoading(false);
       })
       .catch((err: Error) => {
@@ -152,5 +157,10 @@ export function usePreview(item: FinderItem | null) {
     return () => { cancelled = true; };
   }, [item]);
 
-  return { data, isLoading, error };
+  // Return null data when it doesn't match the current item.
+  // Between item change and useEffect firing, data is stale from the
+  // previous page — returning null prevents the editor from mounting
+  // with the wrong content.
+  const matchedData = item && dataItemId === item.id ? data : null;
+  return { data: matchedData, isLoading, error };
 }
