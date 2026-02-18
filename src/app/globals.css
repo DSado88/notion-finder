@@ -74,6 +74,20 @@ body {
   background: rgba(0, 0, 0, 0.2);
 }
 
+/* Block selection highlight */
+[data-block-selected] {
+  background: var(--accent) !important;
+}
+
+/* Floating toolbar fade-in */
+.floating-toolbar {
+  animation: toolbar-fade-in 0.15s ease-out;
+}
+@keyframes toolbar-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Plate.js table styles — divs with slate-table/tr/td/th classes */
 @layer base {
   .slate-table {
