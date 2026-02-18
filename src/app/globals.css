@@ -106,6 +106,7 @@ body {
     border: 1px solid var(--border);
     padding: 0.375rem 0.625rem;
     vertical-align: top;
+    position: relative;
   }
   .slate-th {
     font-weight: 600;

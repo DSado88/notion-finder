@@ -23,7 +23,7 @@ import { useLink } from '@platejs/link/react';
 import { IndentPlugin } from '@platejs/indent/react';
 import { CodeBlockPlugin } from '@platejs/code-block/react';
 import { LinkPlugin } from '@platejs/link/react';
-import { TablePlugin } from '@platejs/table/react';
+import { TablePlugin, TableRowPlugin, TableCellPlugin, TableCellHeaderPlugin } from '@platejs/table/react';
 import { MarkdownPlugin, deserializeMd, serializeMd } from '@platejs/markdown';
 import remarkGfm from 'remark-gfm';
 import { SlashPlugin, SlashInputPlugin } from '@platejs/slash-command/react';
@@ -35,6 +35,8 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { GripVertical } from 'lucide-react';
 import { SlashInputElement } from './slash-node';
 import { FloatingToolbar } from './floating-toolbar';
+import { TableElement, TableRowElement, TableCellElement } from './table-elements';
+import { TableFloatingToolbar } from './table-toolbar';
 
 function HrElement(props: PlateElementProps) {
   return (
@@ -170,7 +172,10 @@ const PLUGINS = [
   ListPlugin,
   CodeBlockPlugin,
   LinkPlugin.withComponent(LinkElement),
-  TablePlugin,
+  TablePlugin.withComponent(TableElement),
+  TableRowPlugin.withComponent(TableRowElement),
+  TableCellPlugin.withComponent(TableCellElement),
+  TableCellHeaderPlugin.withComponent(TableCellElement),
   MarkdownPlugin.configure({
     options: {
       remarkPlugins: [remarkGfm],
@@ -265,6 +270,7 @@ export function PlateEditor({
           onChange={handleChange}
         >
           {!readOnly && <FloatingToolbar />}
+          {!readOnly && <TableFloatingToolbar />}
           <PlateContent
             className="prose prose-base dark:prose-invert max-w-none pl-8 leading-relaxed prose-headings:font-semibold prose-p:my-1 prose-li:my-0 outline-none"
             style={{ color: 'var(--foreground)', caretColor: 'var(--foreground)' }}
