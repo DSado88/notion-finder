@@ -66,9 +66,22 @@ export function getActiveConnection(session: SessionData): Connection | null {
   return session.connections.find((c) => c.backend === session.activeBackend) ?? null;
 }
 
-/** Check whether we're running in env-var fallback mode (self-hosted/dev). */
+/** Return which backends have tokens configured via env vars. */
+export function getConfiguredEnvBackends(): OAuthBackend[] {
+  // If BACKEND_TYPE is set, only return that one (legacy single-backend mode)
+  if (process.env.BACKEND_TYPE) {
+    return [process.env.BACKEND_TYPE as OAuthBackend];
+  }
+  const backends: OAuthBackend[] = [];
+  if (process.env.NOTION_API_TOKEN) backends.push('notion');
+  if (process.env.LINEAR_API_KEY) backends.push('linear');
+  if (process.env.GITHUB_TOKEN && process.env.GITHUB_REPO) backends.push('git-github');
+  return backends;
+}
+
+/** Check whether we're running in env-var mode (any tokens configured). */
 export function isEnvVarMode(): boolean {
-  return !!process.env.BACKEND_TYPE;
+  return getConfiguredEnvBackends().length > 0;
 }
 
 /** Public-safe connection info (no tokens). */

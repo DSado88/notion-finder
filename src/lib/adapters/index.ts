@@ -1,4 +1,4 @@
-export { getAdapter, getAdapterFromRequest, AdapterResolutionError, getBackendType, type BackendType } from './factory';
+export { getAdapterFromRequest, AdapterResolutionError, getBackendType, type BackendType } from './factory';
 export {
   AdapterError,
   type AdapterErrorCode,

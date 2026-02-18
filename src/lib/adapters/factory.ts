@@ -2,6 +2,7 @@ import type { BackendAdapter } from './types';
 import {
   getSession,
   getActiveConnection,
+  getConfiguredEnvBackends,
   isEnvVarMode,
   type Connection,
   type OAuthBackend,
@@ -9,54 +10,51 @@ import {
 
 export type BackendType = 'notion' | 'git-local' | 'git-github' | 'linear';
 
-const GLOBAL_KEY = '__potion_adapter__' as const;
+const ADAPTERS_KEY = '__potion_adapters__' as const;
 
 export function getBackendType(): BackendType {
   return (process.env.BACKEND_TYPE as BackendType) || 'notion';
 }
 
-/**
- * Returns the singleton BackendAdapter for the current backend type.
- * Uses globalThis to survive serverless cold starts and HMR in Next.js.
- * Used only in env-var fallback mode (self-hosted/dev).
- */
-export function getAdapter(): BackendAdapter {
-  const g = globalThis as unknown as Record<string, BackendAdapter | undefined>;
-
-  if (!g[GLOBAL_KEY]) {
-    const type = getBackendType();
-
-    switch (type) {
-      case 'notion': {
-        const { NotionAdapter } = require('./notion-adapter');
-        g[GLOBAL_KEY] = new NotionAdapter();
-        break;
-      }
-      case 'git-local': {
-        const { GitLocalAdapter } = require('./git-local-adapter');
-        g[GLOBAL_KEY] = new GitLocalAdapter(process.env.GIT_LOCAL_PATH!);
-        break;
-      }
-      case 'git-github': {
-        const { GitHubAdapter } = require('./git-github-adapter');
-        const [owner, repo] = process.env.GITHUB_REPO!.split('/');
-        g[GLOBAL_KEY] = new GitHubAdapter(process.env.GITHUB_TOKEN!, owner, repo);
-        break;
-      }
-      case 'linear': {
-        const { LinearAdapter } = require('./linear-adapter');
-        g[GLOBAL_KEY] = new LinearAdapter(process.env.LINEAR_API_KEY!);
-        break;
-      }
-      default:
-        throw new Error(`Unknown backend type: ${type}`);
-    }
-  }
-
-  return g[GLOBAL_KEY]!;
+/** Per-backend adapter cache (survives HMR). */
+function getAdapterCache(): Map<string, BackendAdapter> {
+  const g = globalThis as unknown as Record<string, Map<string, BackendAdapter> | undefined>;
+  if (!g[ADAPTERS_KEY]) g[ADAPTERS_KEY] = new Map();
+  return g[ADAPTERS_KEY]!;
 }
 
-/** Create an adapter from an OAuth connection's token. */
+/** Get or create a cached adapter for an env-var-configured backend. */
+function getEnvAdapter(backend: OAuthBackend): BackendAdapter {
+  const cache = getAdapterCache();
+  if (cache.has(backend)) return cache.get(backend)!;
+
+  let adapter: BackendAdapter;
+  switch (backend) {
+    case 'notion': {
+      const { NotionAdapter } = require('./notion-adapter');
+      adapter = new NotionAdapter();
+      break;
+    }
+    case 'linear': {
+      const { LinearAdapter } = require('./linear-adapter');
+      adapter = new LinearAdapter(process.env.LINEAR_API_KEY!);
+      break;
+    }
+    case 'git-github': {
+      const { GitHubAdapter } = require('./git-github-adapter');
+      const [owner, repo] = process.env.GITHUB_REPO!.split('/');
+      adapter = new GitHubAdapter(process.env.GITHUB_TOKEN!, owner, repo);
+      break;
+    }
+    default:
+      throw new Error(`Unknown env backend: ${backend}`);
+  }
+
+  cache.set(backend, adapter);
+  return adapter;
+}
+
+/** Create an adapter from an OAuth connection's token (not cached — token per session). */
 function createAdapterFromConnection(connection: Connection): BackendAdapter {
   switch (connection.backend) {
     case 'notion': {
@@ -82,14 +80,20 @@ function createAdapterFromConnection(connection: Connection): BackendAdapter {
 
 /**
  * Resolve the correct adapter for an API request.
- * 1. If BACKEND_TYPE env var is set → use the global singleton (backward compat)
- * 2. Otherwise → read session, find active connection, create adapter with OAuth token
+ * 1. If env tokens are configured → use session's activeBackend to pick which one
+ * 2. Otherwise → read session for OAuth connections
  * 3. Throws if no adapter can be resolved (caller should return 401)
  */
 export async function getAdapterFromRequest(): Promise<BackendAdapter> {
-  // Env-var fallback mode
-  if (isEnvVarMode()) {
-    return getAdapter();
+  const envBackends = getConfiguredEnvBackends();
+
+  if (envBackends.length > 0) {
+    // Multi-env mode: read active selection from session, default to first
+    const session = await getSession();
+    const active = session.activeBackend && envBackends.includes(session.activeBackend)
+      ? session.activeBackend
+      : envBackends[0];
+    return getEnvAdapter(active);
   }
 
   // OAuth session mode

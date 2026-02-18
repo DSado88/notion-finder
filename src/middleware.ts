@@ -1,12 +1,22 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+/** Check if any backend tokens are configured via env vars. */
+function hasEnvTokens(): boolean {
+  return !!(
+    process.env.BACKEND_TYPE ||
+    process.env.NOTION_API_TOKEN ||
+    process.env.LINEAR_API_KEY ||
+    (process.env.GITHUB_TOKEN && process.env.GITHUB_REPO)
+  );
+}
+
 /**
- * Redirect unauthenticated users to /connect when no env-var fallback is configured.
- * If BACKEND_TYPE is set (self-hosted/dev mode), skip auth checks entirely.
+ * Redirect unauthenticated users to /connect when no backends are configured.
+ * If env tokens are present, skip auth checks entirely.
  */
 export function middleware(request: NextRequest) {
-  // Env-var mode — no session needed, everything passes through
-  if (process.env.BACKEND_TYPE) {
+  // Env tokens configured — no session needed, everything passes through
+  if (hasEnvTokens()) {
     return NextResponse.next();
   }
 
